@@ -977,3 +977,38 @@ button.mission:hover, button.mission:focus-visible { border-color: var(--lagoon)
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 420px) { .home .install span { display: none; } .home .install { padding: 0; font-size: 18px; } }
+
+/* ---------- medal milestone (Pass 5) ---------- */
+.milestone { position: relative; text-align: center; width: min(460px, 100%); overflow: hidden; padding-top: 26px; }
+.milestone .burst { position: absolute; left: 50%; top: 78px; width: 340px; height: 340px; margin: -170px 0 0 -170px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, var(--ray) 0 10deg, transparent 10deg 30deg); opacity: 0.5;
+  -webkit-mask: radial-gradient(circle, #000 20%, transparent 68%); mask: radial-gradient(circle, #000 20%, transparent 68%); }
+.milestone.tier-bronze { --ray: rgba(205, 127, 50, 0.45); }
+.milestone.tier-silver { --ray: rgba(150, 170, 190, 0.5); }
+.milestone.tier-gold { --ray: rgba(255, 200, 40, 0.55); }
+.milestone .big-medal { position: relative; font-size: 96px; line-height: 1; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.25)); }
+.milestone .mission-name { position: relative; display: block; margin-top: 8px; color: var(--ink-2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+.milestone h2 { position: relative; margin: 2px 0 10px; font-size: 32px; color: var(--ink); }
+.milestone .won-goals { position: relative; list-style: none; margin: 0 auto 10px; padding: 0; display: grid; gap: 6px; text-align: left; max-width: 340px; }
+.milestone .won-goals li { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; background: rgba(46, 160, 90, 0.1); font-size: 15px; font-weight: 700; }
+.milestone .tick { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--good); color: #fff; font-weight: 900; font-size: 15px; }
+.milestone .xp-line { position: relative; margin: 4px 0 10px; font-size: 16px; }
+.milestone .next-medal { position: relative; display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 16px; border: 2px dashed rgba(16, 50, 59, 0.15); margin: 0 auto 12px; max-width: 340px; }
+.milestone .next-medal > span { font-size: 28px; filter: grayscale(0.6); opacity: 0.8; }
+.milestone .next-medal b { display: block; font-family: var(--display); }
+.milestone .next-medal small { color: var(--ink-2); font-weight: 700; }
+.milestone .choices { position: relative; display: grid; gap: 8px; }
+.milestone .choices .start { margin: 0; }
+.milestone .choices .cancel { margin: 0; min-height: 48px; border-radius: 24px; border: 2px solid rgba(16, 50, 59, 0.15); text-decoration: none; color: var(--ink); background: rgba(255, 255, 255, 0.6); }
+/* Animated: medal drops and spins in, rays turn, goals tick off one by one. */
+.milestone.anim .big-medal { animation: medal-in 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.milestone.anim .burst { animation: burst-in 0.6s ease-out both, spin 14s linear infinite; }
+.milestone.anim h2 { animation: rise 0.4s 0.3s ease-out both; }
+.milestone.anim .won-goals li { animation: rise 0.35s var(--d) ease-out both; }
+.milestone.anim .won-goals .tick { animation: tick 0.4s calc(var(--d) + 0.12s) cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.milestone.anim .xp-line, .milestone.anim .next-medal, .milestone.anim .choices { animation: rise 0.35s var(--d, 1s) ease-out both; }
+@keyframes medal-in { 0% { transform: translateY(-60px) scale(0.3) rotate(-40deg); opacity: 0; } 70% { transform: translateY(4px) scale(1.12) rotate(8deg); opacity: 1; } 100% { transform: none; } }
+@keyframes burst-in { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 0.5; } }
+@keyframes spin { to { rotate: 360deg; } }
+@keyframes rise { from { transform: translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes tick { from { transform: scale(0); } to { transform: scale(1); } }

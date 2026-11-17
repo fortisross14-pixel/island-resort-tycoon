@@ -7,10 +7,10 @@ import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
 import { InfoPanel } from './ui/panel';
 import { NightReportView } from './ui/report';
-import { GoalsView, certificateHtml, type NewGameChoice } from './ui/goals';
+import { GoalsView, certificateHtml, milestoneHtml, type NewGameChoice } from './ui/goals';
 import { HomeScreen } from './ui/home';
 import { Profile, type ProfileData } from './sim/profile';
-import { MEDAL_NAMES, SCENARIOS, applyPrebuilt } from './sim/scenario';
+import { MEDAL_NAMES, SCENARIOS, applyPrebuilt, type MedalTier } from './sim/scenario';
 import { islandLayout } from './sim/islands';
 
 /** The sandbox is played on the biggest island so far. */
@@ -104,6 +104,8 @@ export class Game {
   /** What carries over between missions: experience, research and medals (Pass 4 step 4). */
   readonly profile: Profile;
   private certificate: HTMLElement;
+  /** Medals won at the moment on screen, and the speed to go back to (Pass 5). */
+  private milestone: { won: Array<{ tier: MedalTier; xp: number; first: boolean }>; speed: Speed } | null = null;
   private speed: Speed = 1;
   private tickAcc = 0;
   private sinceSave = 0;
@@ -286,9 +288,15 @@ export class Game {
     this.certificate.hidden = true;
     this.certificate.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest('[data-keep]')) this.certificate.hidden = true;
+      if (t.closest('[data-keep]')) {
+        this.certificate.hidden = true;
+        // Back to the speed the player had before the medal (unless the night report is up).
+        if (this.milestone && this.milestone.speed > 0 && !this.sim.night) this.setSpeed(this.milestone.speed);
+        this.milestone = null;
+      }
       if (t.closest('[data-new]')) {
         this.certificate.hidden = true;
+        this.milestone = null;
         this.newGame.show(true, !Coach.seen);
       }
     });
@@ -963,11 +971,31 @@ export class Game {
           this.sfx.play('fanfare');
           const r = this.profile.awardMedal(c.def.id, e.tier);
           this.saveProfile();
-          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, `${c.def.name} · +${r.xp} XP${r.first ? ', first time' : ''} · ${this.profile.points('caribbean')} points`, !this.settings.reduceMotion);
+          // A milestone: pause and show what was won. Two medals on one night share a card.
+          if (!this.milestone) this.milestone = { won: [], speed: this.speed };
+          this.milestone.won.push({ tier: e.tier, ...r });
+          this.setSpeed(0);
+          const motion = !this.settings.reduceMotion;
+          if (motion) this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, `+${r.xp} XP`, true);
+          this.certificate.innerHTML = milestoneHtml(c, this.milestone.won, motion);
+          this.certificate.hidden = false;
+          this.save();
+          return;
         }
         case 'finished': {
           const xp = this.profile.finishMission(c.def.id, this.sim.rating);
           this.saveProfile();
+          // Gold ends the mission: the milestone card stays and notes the final-rating bonus.
+          if (this.milestone && !this.certificate.hidden) {
+            const line = this.certificate.querySelector('[data-finalxp]');
+            if (line && xp) line.textContent = ` · +${xp} for the final rating`;
+            // The mission is over: no next medal to play for.
+            this.certificate.querySelector('.next-medal')?.remove();
+            const keep = this.certificate.querySelector('[data-keep]');
+            if (keep) keep.textContent = 'Keep playing this resort';
+            this.save();
+            return;
+          }
           this.certificate.innerHTML = certificateHtml(c, xp, this.profile.xp);
           this.certificate.hidden = false;
           this.save();

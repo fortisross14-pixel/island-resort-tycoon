@@ -178,3 +178,45 @@ export function certificateHtml(c: Campaign, xp = 0, totalXp = 0): string {
     <button class="cancel" data-keep>Keep playing this resort</button>
   </section>`;
 }
+
+/**
+ * A medal won: the milestone card. The medal pops in, each goal ticks off in turn, and the
+ * player chooses between the islands and playing on for the next medal. `won` lists the
+ * medals won at this moment (two can land on the same night), lowest first.
+ */
+export function milestoneHtml(c: Campaign, won: Array<{ tier: MedalTier; xp: number; first: boolean }>, animate: boolean): string {
+  const top = won[won.length - 1].tier;
+  const next = MEDALS[MEDALS.indexOf(top) + 1] as MedalTier | undefined;
+  const canNext = next && !c.missed(next) && !c.state.finished;
+  let delay = 0.55;
+  const goals = won
+    .map(({ tier }) =>
+      c.def.medals[tier]
+        .map((g) => {
+          const li = `<li style="--d:${delay.toFixed(2)}s"><span class="tick" aria-hidden="true">✓</span><span>${g.label}</span>${won.length > 1 ? `<small>${MEDAL_ICON[tier]}</small>` : ''}</li>`;
+          delay += 0.22;
+          return li;
+        })
+        .join(''),
+    )
+    .join('');
+  const xp = won.reduce((s, w) => s + w.xp, 0);
+  const firsts = won.filter((w) => w.first).length;
+  const nextLine = canNext
+    ? `<div class="next-medal" style="--d:${(delay + 0.15).toFixed(2)}s"><span>${MEDAL_ICON[next]}</span><div><b>Next: ${MEDAL_NAMES[next]}</b><small>${c.def.medals[next].map((g) => g.label).join(' · ')}</small></div></div>`
+    : '';
+  const keep = canNext ? `Keep playing for ${MEDAL_NAMES[next].toLowerCase()}` : 'Keep playing this resort';
+  return `<section class="report milestone tier-${top} ${animate ? 'anim' : ''}" role="dialog" aria-label="${MEDAL_NAMES[top]} achieved">
+    <div class="burst" aria-hidden="true"></div>
+    <div class="big-medal" aria-hidden="true">${MEDAL_ICON[top]}</div>
+    <small class="mission-name">${c.def.name}</small>
+    <h2>${MEDAL_NAMES[top]} achieved!</h2>
+    <ul class="won-goals">${goals}</ul>
+    <p class="xp-line" style="--d:${delay.toFixed(2)}s">⭐ +${xp} XP${firsts ? (firsts === won.length ? ' · first time' : '') : ' · repeat'}<span data-finalxp></span></p>
+    ${nextLine}
+    <div class="choices" style="--d:${(delay + 0.3).toFixed(2)}s">
+      <button class="start" data-keep>${keep}</button>
+      <button class="cancel" data-new>Back to the islands</button>
+    </div>
+  </section>`;
+}
