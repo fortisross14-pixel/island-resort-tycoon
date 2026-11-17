@@ -1,0 +1,398 @@
+import { BUILDINGS, BUILDING_KINDS, PATH_COST, footprint, type BuildingKind, type Rotation } from './sim/buildings';
+import { History } from './sim/history';
+import { World, manhattanSteps, type Tile, type WorldSnapshot } from './sim/world';
+import { Stage } from './render/stage';
+import { WorldView } from './render/worldView';
+import { Hud, type TrayItem } from './ui/hud';
+
+type Tool =
+  | { type: 'none' }
+  | { type: 'path' }
+  | { type: 'build'; kind: BuildingKind; rot: Rotation }
+  | { type: 'demolish' };
+
+const SAVE_KEY = 'irt.save.v1';
+/** Pointer travel (px) below which a press counts as a tap. */
+const TAP_SLOP = 8;
+
+interface Ptr {
+  x: number;
+  y: number;
+  sx: number;
+  sy: number;
+}
+
+const HINTS: Record<Tool['type'], string> = {
+  none: '',
+  path: 'Drag from an existing path to draw. Paths must lead back to the dock.',
+  build: 'Drag to position, release to build. Must touch a path.',
+  demolish: 'Tap a building or path to remove it (50% refund).',
+};
+
+/**
+ * Glue between input, the World and the views. Touch rules:
+ * one finger = the active tool (or pan when no tool), two fingers = pan + pinch.
+ * Mouse: left = tool/pan, right or middle drag = pan, wheel = zoom.
+ */
+export class Game {
+  readonly world: World;
+  readonly history: History;
+  private stage: Stage;
+  private view: WorldView;
+  private hud: Hud;
+  private tool: Tool = { type: 'none' };
+  private ptrs = new Map<number, Ptr>();
+  /** What the current single-pointer press is doing. */
+  private press: 'none' | 'tool' | 'pan' | 'gesture' = 'none';
+  private stroke: { last: Tile | null; placed: number; firstError: string | null } | null = null;
+  private ghostAt: Tile | null = null;
+  private trayDrag: { item: TrayItem; sx: number; sy: number; moved: boolean } | null = null;
+  private saveTimer = 0;
+
+  constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
+    this.world = loadWorld() ?? new World();
+    this.history = new History(this.world);
+    this.stage = new Stage(canvas);
+    this.view = new WorldView(this.stage, this.world);
+    this.hud = new Hud(hudRoot, {
+      onTrayDown: (item, e) => this.onTrayDown(item, e),
+      onRotate: () => this.rotate(),
+      onDemolish: () => this.setTool(this.tool.type === 'demolish' ? { type: 'none' } : { type: 'demolish' }),
+      onUndo: () => this.undo(),
+      onCancel: () => this.setTool({ type: 'none' }),
+      onNewIsland: () => this.newIsland(),
+    });
+    this.world.onChange(() => this.onWorldChange());
+    this.onWorldChange();
+    this.setTool({ type: 'none' });
+    this.bindInput(canvas);
+  }
+
+  // ---------- tools ----------
+
+  setTool(t: Tool): void {
+    this.tool = t;
+    this.ghostAt = null;
+    this.view.hideGhost();
+    this.view.setGridVisible(t.type !== 'none');
+    const active: TrayItem | 'demolish' | null =
+      t.type === 'build' ? t.kind : t.type === 'path' ? 'path' : t.type === 'demolish' ? 'demolish' : null;
+    this.hud.setActive(active, t.type === 'build');
+    this.hud.setHint(HINTS[t.type]);
+  }
+
+  private rotate(): void {
+    if (this.tool.type !== 'build') return;
+    this.tool.rot = ((this.tool.rot + 1) % 4) as Rotation;
+    if (this.ghostAt) this.previewBuild(this.ghostAt);
+  }
+
+  private undo(): void {
+    if (this.history.undo()) this.hud.toast('Undone', 'info');
+    if (this.tool.type === 'build' && this.ghostAt) this.previewBuild(this.ghostAt);
+  }
+
+  private newIsland(): void {
+    if (!window.confirm('Start a new island? Your current island will be lost.')) return;
+    this.world.restore(new World().snapshot());
+    this.history.clear();
+    this.setTool({ type: 'none' });
+    this.onWorldChange();
+  }
+
+  private onWorldChange(): void {
+    this.hud.setCoins(this.world.money);
+    this.hud.setAffordable('path', this.world.money >= PATH_COST);
+    for (const k of BUILDING_KINDS) this.hud.setAffordable(k, this.world.money >= BUILDINGS[k].cost);
+    // History commits after the edit that triggered this event, so read it next tick.
+    queueMicrotask(() => this.hud.setUndo(this.history.canUndo));
+    clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => saveWorld(this.world.snapshot()), 300);
+  }
+
+  // ---------- previews ----------
+
+  private tileAt(clientX: number, clientY: number): Tile | null {
+    const p = this.stage.groundAt(clientX, clientY);
+    return p ? { x: Math.floor(p.x), y: Math.floor(p.z) } : null;
+  }
+
+  /** Anchor so the finger sits over the middle of the footprint. */
+  private buildAnchor(t: Tile): Tile {
+    if (this.tool.type !== 'build') return t;
+    const { w, h } = footprint(this.tool.kind, this.tool.rot);
+    return { x: t.x - Math.floor((w - 1) / 2), y: t.y - Math.floor((h - 1) / 2) };
+  }
+
+  private previewBuild(t: Tile): void {
+    if (this.tool.type !== 'build') return;
+    this.ghostAt = t;
+    const a = this.buildAnchor(t);
+    const ok = this.world.canPlaceBuilding(this.tool.kind, a.x, a.y, this.tool.rot).ok;
+    this.view.showGhost(this.tool.kind, a.x, a.y, this.tool.rot, ok);
+  }
+
+  private previewHover(t: Tile | null): void {
+    if (!t) return this.view.hideGhost();
+    switch (this.tool.type) {
+      case 'build':
+        return this.previewBuild(t);
+      case 'path':
+        if (!this.world.inBounds(t.x, t.y)) return this.view.hideGhost();
+        return this.view.highlight([t], this.world.isPath(t.x, t.y) || this.world.canPlacePath(t.x, t.y).ok ? 'ok' : 'bad');
+      case 'demolish': {
+        const b = this.world.buildingAt(t.x, t.y);
+        if (b) return this.view.highlight(this.world.footprintTiles(b.kind, b.x, b.y, b.rot), 'bad');
+        if (this.world.isPath(t.x, t.y))
+          return this.view.highlight([t], this.world.canRemovePath(t.x, t.y).ok ? 'bad' : 'info');
+        return this.view.hideGhost();
+      }
+      default:
+        return this.view.hideGhost();
+    }
+  }
+
+  // ---------- actions ----------
+
+  private tryBuild(t: Tile): void {
+    if (this.tool.type !== 'build') return;
+    const a = this.buildAnchor(t);
+    const { kind, rot } = this.tool;
+    const r = this.history.run(() => this.world.placeBuilding(kind, a.x, a.y, rot));
+    if (!r.ok) this.hud.toast(r.reason);
+    this.previewBuild(t);
+  }
+
+  private tryDemolish(t: Tile): void {
+    const r = this.history.run(() => this.world.demolishAt(t.x, t.y));
+    if (!r.ok) this.hud.toast(r.reason);
+    this.previewHover(t);
+  }
+
+  private strokeTo(t: Tile): void {
+    const s = this.stroke;
+    if (!s) return;
+    const steps = s.last ? manhattanSteps(s.last, t) : [t];
+    for (const step of steps) {
+      if (this.world.isPath(step.x, step.y)) continue;
+      const r = this.world.placePath(step.x, step.y);
+      if (r.ok) {
+        s.placed++;
+        this.history.touch();
+      } else if (!s.firstError) s.firstError = r.reason;
+    }
+    s.last = t;
+    this.view.highlight([t], this.world.isPath(t.x, t.y) ? 'ok' : 'bad');
+  }
+
+  private endStroke(): void {
+    if (!this.stroke) return;
+    if (this.stroke.placed === 0 && this.stroke.firstError) this.hud.toast(this.stroke.firstError);
+    this.history.commit();
+    this.stroke = null;
+    this.onWorldChange();
+  }
+
+  private inspect(t: Tile): void {
+    const b = this.world.buildingAt(t.x, t.y);
+    if (b) this.hud.toast(`${BUILDINGS[b.kind].name} · built on day ${b.builtDay}`, 'info');
+  }
+
+  // ---------- input ----------
+
+  private onTrayDown(item: TrayItem, e: PointerEvent): void {
+    if (item === 'path') this.setTool({ type: 'path' });
+    else {
+      const rot = this.tool.type === 'build' && this.tool.kind === item ? this.tool.rot : 0;
+      this.setTool({ type: 'build', kind: item, rot });
+    }
+    this.trayDrag = { item, sx: e.clientX, sy: e.clientY, moved: false };
+  }
+
+  private bindInput(canvas: HTMLCanvasElement): void {
+    // Drags that start on a tray card.
+    window.addEventListener('pointermove', (e) => {
+      const d = this.trayDrag;
+      if (!d) return;
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > TAP_SLOP) d.moved = true;
+      if (d.moved && document.elementFromPoint(e.clientX, e.clientY) === canvas && this.tool.type === 'build') {
+        const t = this.tileAt(e.clientX, e.clientY);
+        if (t) this.previewBuild(t);
+      }
+    });
+    window.addEventListener('pointerup', (e) => {
+      const d = this.trayDrag;
+      this.trayDrag = null;
+      if (!d || !d.moved || this.tool.type !== 'build') return;
+      if (document.elementFromPoint(e.clientX, e.clientY) !== canvas) return this.view.hideGhost();
+      const t = this.tileAt(e.clientX, e.clientY);
+      if (t) this.tryBuild(t);
+    });
+    window.addEventListener('pointercancel', () => (this.trayDrag = null));
+
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('pointerdown', (e) => this.onDown(e, canvas));
+    canvas.addEventListener('pointermove', (e) => this.onMove(e));
+    canvas.addEventListener('pointerup', (e) => this.onUp(e));
+    canvas.addEventListener('pointercancel', (e) => this.onUp(e, true));
+    canvas.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse' && !this.ptrs.size && this.tool.type !== 'none') this.view.hideGhost();
+    });
+    canvas.addEventListener(
+      'wheel',
+      (e) => {
+        e.preventDefault();
+        this.stage.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+      },
+      { passive: false },
+    );
+
+    window.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        return this.undo();
+      }
+      switch (e.key.toLowerCase()) {
+        case 'escape':
+          return this.setTool({ type: 'none' });
+        case 'r':
+          return this.rotate();
+        case 'x':
+          return this.setTool({ type: 'demolish' });
+        case '1':
+          return this.setTool({ type: 'path' });
+        case '2':
+        case '3':
+        case '4':
+          return this.setTool({ type: 'build', kind: BUILDING_KINDS[Number(e.key) - 2], rot: 0 });
+      }
+    });
+  }
+
+  private onDown(e: PointerEvent, canvas: HTMLCanvasElement): void {
+    canvas.setPointerCapture(e.pointerId);
+    this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+
+    if (this.ptrs.size === 2) {
+      // Second finger: switch to pan + pinch and drop whatever the first finger was doing.
+      if (this.stroke) this.endStroke();
+      this.press = 'gesture';
+      this.view.hideGhost();
+      return;
+    }
+    if (this.ptrs.size > 2) return;
+
+    const panButton = e.pointerType === 'mouse' && (e.button === 1 || e.button === 2);
+    if (panButton || this.tool.type === 'none') {
+      this.press = 'pan';
+      return;
+    }
+    this.press = 'tool';
+    const t = this.tileAt(e.clientX, e.clientY);
+    if (this.tool.type === 'path') {
+      this.history.begin();
+      this.stroke = { last: null, placed: 0, firstError: null };
+      if (t) {
+        // Starting on an existing path just anchors the stroke there.
+        if (this.world.isPath(t.x, t.y)) this.stroke.last = t;
+        else this.strokeTo(t);
+      }
+    } else if (t) this.previewHover(t);
+  }
+
+  private onMove(e: PointerEvent): void {
+    const p = this.ptrs.get(e.pointerId);
+    if (!p) {
+      if (e.pointerType === 'mouse') this.previewHover(this.tileAt(e.clientX, e.clientY));
+      return;
+    }
+    const px = p.x;
+    const py = p.y;
+
+    if (this.press === 'gesture' && this.ptrs.size >= 2) {
+      const [a, b] = [...this.ptrs.values()];
+      const midBefore = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const distBefore = Math.hypot(a.x - b.x, a.y - b.y);
+      p.x = e.clientX;
+      p.y = e.clientY;
+      const [a2, b2] = [...this.ptrs.values()];
+      const mid = { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 };
+      const dist = Math.hypot(a2.x - b2.x, a2.y - b2.y);
+      this.stage.panScreen(midBefore.x, midBefore.y, mid.x, mid.y);
+      if (distBefore > 0) this.stage.zoomAt(dist / distBefore, mid.x, mid.y);
+      return;
+    }
+
+    p.x = e.clientX;
+    p.y = e.clientY;
+    if (this.press === 'pan') return this.stage.panScreen(px, py, p.x, p.y);
+    if (this.press !== 'tool') return;
+
+    const t = this.tileAt(e.clientX, e.clientY);
+    if (!t) return;
+    if (this.tool.type === 'path') {
+      const last = this.stroke?.last;
+      if (!last || last.x !== t.x || last.y !== t.y) this.strokeTo(t);
+    } else this.previewHover(t);
+  }
+
+  private onUp(e: PointerEvent, cancelled = false): void {
+    const p = this.ptrs.get(e.pointerId);
+    if (!p) return;
+    this.ptrs.delete(e.pointerId);
+    const press = this.press;
+    if (this.ptrs.size > 0) {
+      // Lifting one finger of a pinch: wait for the rest without acting.
+      if (press === 'gesture') return;
+    }
+    this.press = 'none';
+    if (press === 'gesture') {
+      if (e.pointerType !== 'mouse') this.view.hideGhost();
+      return;
+    }
+
+    const tap = Math.hypot(p.x - p.sx, p.y - p.sy) <= TAP_SLOP;
+    const t = this.tileAt(e.clientX, e.clientY);
+    if (cancelled) {
+      if (this.stroke) this.endStroke();
+      return;
+    }
+    if (press === 'pan') {
+      if (tap && t && this.tool.type === 'none') this.inspect(t);
+      return;
+    }
+    if (press !== 'tool') return;
+    switch (this.tool.type) {
+      case 'path':
+        this.endStroke();
+        if (e.pointerType !== 'mouse') this.view.hideGhost();
+        return;
+      case 'build':
+        if (t) this.tryBuild(t);
+        if (e.pointerType !== 'mouse') this.view.hideGhost();
+        return;
+      case 'demolish':
+        if (t && tap) this.tryDemolish(t);
+        if (e.pointerType !== 'mouse') this.view.hideGhost();
+        return;
+    }
+  }
+}
+
+function loadWorld(): World | null {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    return raw ? World.fromSnapshot(JSON.parse(raw) as WorldSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveWorld(s: WorldSnapshot): void {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+  } catch {
+    /* storage unavailable (private mode): the island just won't persist */
+  }
+}
