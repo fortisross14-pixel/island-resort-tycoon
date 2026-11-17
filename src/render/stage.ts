@@ -15,10 +15,13 @@ export class Stage {
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
   private needsRender = true;
+  private sun!: THREE.DirectionalLight;
   private frameHooks: Array<(dt: number) => boolean> = [];
   private lastFrame = 0;
   /** World units visible vertically at zoom 1. */
   private viewHeight = 15;
+  /** Tiles across that the default zoom should fit (see setFit). */
+  private fit = 10;
   private bounds = { minX: -4, maxX: 14, minZ: -4, maxZ: 14 };
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -47,6 +50,7 @@ export class Stage {
     sun.shadow.radius = 3;
     this.scene.add(sun);
     this.scene.add(sun.target);
+    this.sun = sun;
     sun.target.position.set(5, 0, 5);
     sun.position.set(5 - 8, 20, 5 + 12);
 
@@ -68,6 +72,23 @@ export class Stage {
   /** Run every animation frame with the real seconds elapsed; return true to draw this frame. */
   onFrame(hook: (dt: number) => boolean): void {
     this.frameHooks.push(hook);
+  }
+
+  /** Cover a square of the map with sun shadows. */
+  setShadowArea(cx: number, cz: number, half: number): void {
+    const cam = this.sun.shadow.camera;
+    cam.left = cam.bottom = -half;
+    cam.right = cam.top = half;
+    cam.updateProjectionMatrix();
+    this.sun.target.position.set(cx, 0, cz);
+    this.sun.position.set(cx - 8, 20, cz + 12);
+    this.requestRender();
+  }
+
+  /** Make the default zoom fit an island `tiles` across. */
+  setFit(tiles: number): void {
+    this.fit = tiles;
+    this.resize();
   }
 
   setBounds(minX: number, maxX: number, minZ: number, maxZ: number): void {
@@ -96,7 +117,7 @@ export class Stage {
     this.renderer.setSize(w, h, false);
     const aspect = w / h;
     // On narrow (portrait) screens show more height so the whole island fits across.
-    this.viewHeight = aspect < 1 ? 16.5 / aspect : 15;
+    this.viewHeight = aspect < 1 ? (this.fit * 1.65) / aspect : this.fit * 1.5;
     const half = this.viewHeight / 2;
     this.camera.left = -half * aspect;
     this.camera.right = half * aspect;

@@ -14,6 +14,7 @@ import type { HighlightTone, RoomMark } from './render/worldView';
 type Tool =
   | { type: 'none' }
   | { type: 'path' }
+  | { type: 'land' }
   | { type: 'build'; kind: BuildingKind; rot: Rotation }
   | { type: 'demolish' };
 
@@ -36,6 +37,7 @@ interface Ptr {
 }
 
 const HINTS: Record<Tool['type'], string> = {
+  land: 'Tap a plot next to your island to buy it. Each plot costs more than the last.',
   none: '',
   path: 'Drag from an existing path to draw. Paths must lead back to the dock.',
   build: 'Drag to position, release to build. Must touch a path.',
@@ -77,8 +79,8 @@ export class Game {
   private saveTimer = 0;
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
-    const save = loadSave();
-    this.world = save ? World.fromSnapshot(save.world) : new World();
+    const { save, discarded } = loadSave();
+    this.world = save ? World.fromSnapshot(save.world) : World.newGame();
     this.sim = new Sim(this.world);
     if (save?.sim) {
       try {
@@ -126,6 +128,7 @@ export class Game {
     this.onWorldChange();
     this.setTool({ type: 'none' });
     this.bindInput(canvas);
+    if (discarded) this.hud.toast('The island is bigger now: an old prototype save was replaced', 'info');
   }
 
   // ---------- clock ----------
@@ -153,7 +156,7 @@ export class Game {
     const alpha = this.speed > 0 ? this.tickAcc / TICK : 1;
     this.guestView.update(alpha, this.speed > 0 ? dt : 0);
     this.ferryView.update(this.speed > 0 ? dt : 0);
-    const popping = this.coinPops.update(dt * Math.max(this.speed, 1));
+    const popping = this.coinPops.update(dt * Math.max(this.speed, 1)) || this.view.update(dt);
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     this.hud.setRating(this.sim.rating);
@@ -334,8 +337,17 @@ export class Game {
     this.ghostAt = null;
     this.view.hideGhost();
     this.view.setGridVisible(t.type !== 'none');
+    this.view.setLandMode(t.type === 'land');
     const active: TrayItem | 'demolish' | null =
-      t.type === 'build' ? t.kind : t.type === 'path' ? 'path' : t.type === 'demolish' ? 'demolish' : null;
+      t.type === 'build'
+        ? t.kind
+        : t.type === 'path'
+          ? 'path'
+          : t.type === 'land'
+            ? 'land'
+            : t.type === 'demolish'
+              ? 'demolish'
+              : null;
     this.hud.setActive(active, t.type === 'build');
     this.hud.setHint(HINTS[t.type]);
   }
@@ -353,7 +365,8 @@ export class Game {
 
   private newIsland(): void {
     if (!window.confirm('Start a new island? Your current island will be lost.')) return;
-    this.world.restore(new World().snapshot());
+    this.world.restore(World.newGame().snapshot());
+    this.view.frameStart();
     this.sim.reset();
     this.report.hide();
     this.history.clear();
@@ -364,6 +377,8 @@ export class Game {
   private onMoneyChange(): void {
     this.hud.setCoins(this.world.money);
     this.hud.setAffordable('path', this.world.money >= PATH_COST);
+    this.hud.setLandPrice(this.world.plotPrice);
+    this.hud.setAffordable('land', this.world.money >= this.world.plotPrice);
     for (const k of BUILDING_KINDS) this.hud.setAffordable(k, this.world.money >= BUILDINGS[k].cost);
     // A ghost that just became affordable should turn green.
     if (this.tool.type === 'build' && this.ghostAt) this.previewBuild(this.ghostAt);
@@ -487,6 +502,7 @@ export class Game {
 
   private onTrayDown(item: TrayItem, e: PointerEvent): void {
     if (item === 'path') this.setTool({ type: 'path' });
+    else if (item === 'land') this.setTool(this.tool.type === 'land' ? { type: 'none' } : { type: 'land' });
     else {
       const rot = this.tool.type === 'build' && this.tool.kind === item ? this.tool.rot : 0;
       this.setTool({ type: 'build', kind: item, rot });
@@ -556,6 +572,8 @@ export class Game {
           return this.setTool({ type: 'none' });
         case 'g':
           return this.setTab(this.tab === 'guests' ? 'build' : 'guests');
+        case 'l':
+          return this.setTool({ type: 'land' });
         case 'r':
           return this.rotate();
         case 'x':
@@ -676,21 +694,34 @@ export class Game {
         if (t && tap) this.tryDemolish(t);
         if (e.pointerType !== 'mouse') this.view.hideGhost();
         return;
+      case 'land':
+        if (t && tap) this.tryBuyLand(t);
+        return;
     }
+  }
+
+  private tryBuyLand(t: Tile): void {
+    const plot = this.world.plotAt(t.x, t.y);
+    if (!plot) return;
+    const price = this.world.plotPrice;
+    const r = this.history.run(() => this.world.buyPlot(plot.id));
+    if (!r.ok) return this.hud.toast(r.reason);
+    this.hud.toast(`New land! ${price.toLocaleString('en-US')} coins`, 'good');
   }
 }
 
-function loadSave(): SaveFile | null {
+function loadSave(): { save: SaveFile | null; discarded: boolean } {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
+    if (!raw) return { save: null, discarded: false };
     const data = JSON.parse(raw) as SaveFile | WorldSnapshot;
     // M1 saves held just the world snapshot.
     const save = 'world' in data ? data : { world: data };
     World.fromSnapshot(save.world); // throws if the save doesn't fit this version
-    return save;
+    return { save, discarded: false };
   } catch {
-    return null;
+    // Saves from before the plotted map (M1–M5) don't fit the new island.
+    return { save: null, discarded: true };
   }
 }
 

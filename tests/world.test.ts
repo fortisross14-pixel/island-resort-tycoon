@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDINGS, PATH_COST, START_MONEY, footprint } from '../src/sim/buildings';
 import { History } from '../src/sim/history';
-import { World, manhattanSteps } from '../src/sim/world';
+import { PLOT_BASE_PRICE, World, manhattanSteps } from '../src/sim/world';
 
 /** Lay a straight path north from the dock, n tiles long. */
 function spine(w: World, n: number): void {
@@ -150,5 +150,67 @@ describe('snapshots and undo', () => {
     const h = new History(w);
     h.run(() => w.placeBuilding('snackBar', 0, 0, 0));
     expect(h.canUndo).toBe(false);
+  });
+});
+
+describe('land plots (Pass 1)', () => {
+  it('starts with a 14×14 island in the middle of a 28×28 map', () => {
+    const w = World.newGame();
+    expect(w.size).toBe(28);
+    let land = 0;
+    for (let y = 0; y < w.size; y++) for (let x = 0; x < w.size; x++) if (w.isLand(x, y)) land++;
+    expect(land).toBe(14 * 14);
+    expect(w.isLand(w.dock.x, w.dock.y)).toBe(true);
+    expect(w.isPath(w.dock.x, w.dock.y)).toBe(true);
+    expect(w.isLand(w.dock.x, w.dock.y + 1)).toBe(false); // the harbour
+  });
+
+  it('cannot build on land you don’t own', () => {
+    const w = World.newGame();
+    expect(w.placePath(w.dock.x, w.dock.y + 1)).toEqual({ ok: false, reason: 'Buy this land first' });
+    const d = w.dock;
+    for (let y = d.y - 1; y >= 7; y--) expect(w.placePath(d.x, y).ok).toBe(true);
+    expect(w.placePath(d.x, 6)).toEqual({ ok: false, reason: 'Buy this land first' });
+  });
+
+  it('buys plots next to the island, at rising prices, then builds on them', () => {
+    const w = World.newGame(100000);
+    const north = w.plotAt(10, 3)!;
+    const corner = w.plotAt(3, 3)!;
+    expect(w.canBuyPlot(corner.id)).toEqual({ ok: false, reason: 'Buy land next to your island first' });
+    const price1 = w.plotPrice;
+    expect(price1).toBe(PLOT_BASE_PRICE);
+    const before = w.money;
+    expect(w.buyPlot(north.id).ok).toBe(true);
+    expect(w.money).toBe(before - price1);
+    expect(w.isLand(10, 3)).toBe(true);
+    expect(w.plotPrice).toBeGreaterThan(price1);
+    // The corner now shares a side with the plot just bought.
+    expect(w.canBuyPlot(corner.id).ok).toBe(true);
+    // Extend the spine onto the new land.
+    const d = w.dock;
+    for (let y = d.y - 1; y >= 0; y--) expect(w.placePath(d.x, y).ok).toBe(true);
+    expect(w.placeBuilding('basicRooms', d.x - 2, 1, 0).ok).toBe(true);
+    expect(w.placeBuilding('basicRooms', d.x + 1, 1, 0)).toEqual({ ok: false, reason: 'Buy this land first' });
+  });
+
+  it('never sells the harbour, owned land, or land it can’t afford', () => {
+    const w = World.newGame(1000);
+    const harbour = w.plotAt(w.dock.x, w.dock.y + 1)!;
+    expect(w.canBuyPlot(harbour.id)).toEqual({ ok: false, reason: 'The harbour stays open water' });
+    expect(w.canBuyPlot(w.plotAt(10, 10)!.id)).toEqual({ ok: false, reason: 'You already own this land' });
+    expect(w.canBuyPlot(w.plotAt(10, 3)!.id)).toEqual({ ok: false, reason: 'Not enough coins' });
+  });
+
+  it('plot purchases survive snapshots and undo', () => {
+    const w = World.newGame(100000);
+    const h = new History(w);
+    const p = w.plotAt(10, 3)!;
+    h.run(() => w.buyPlot(p.id));
+    const copy = World.fromSnapshot(JSON.parse(JSON.stringify(w.snapshot())));
+    expect(copy.isLand(10, 3)).toBe(true);
+    h.undo();
+    expect(w.isLand(10, 3)).toBe(false);
+    expect(w.money).toBe(100000);
   });
 });

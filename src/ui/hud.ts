@@ -2,7 +2,7 @@ import { BUILDINGS, BUILDING_KINDS, PATH_COST, type BuildingKind } from '../sim/
 import { WISHES, type Wish } from '../sim/match';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
-export type TrayItem = BuildingKind | 'path';
+export type TrayItem = BuildingKind | 'path' | 'land';
 
 export interface HudHandlers {
   onTrayDown(item: TrayItem, e: PointerEvent): void;
@@ -37,6 +37,7 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  land: '<svg viewBox="0 0 32 32"><path d="M2 22 Q16 14 30 22 V28 H2 Z" fill="#6fd6d6"/><path d="M7 21 Q16 10 25 21 Z" fill="#9fd36f"/><rect x="15" y="6" width="2" height="10" fill="#7d5534"/><path d="M17 6 L24 9 L17 12 Z" fill="#ff8a4c"/></svg>',
   path: '<svg viewBox="0 0 32 32"><path d="M6 28 C 10 18, 22 20, 26 4" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>',
   basicRooms:
     '<svg viewBox="0 0 32 32"><path d="M4 15 L16 6 L28 15 Z" fill="#e0704f"/><rect x="7" y="15" width="18" height="12" fill="#fff4e2" stroke="#d9c4a0"/><rect x="10" y="19" width="4" height="8" fill="#7d5534"/><rect x="18" y="19" width="4" height="4" fill="#3b6e8f"/></svg>',
@@ -137,14 +138,20 @@ export class Hud {
     for (const b of this.speedBtns) b.addEventListener('click', () => h.onSpeed(Number(b.dataset.speed) as Speed));
 
     const tray = q<HTMLElement>('[data-tray]');
-    const items: TrayItem[] = ['path', ...BUILDING_KINDS];
+    const items: TrayItem[] = ['path', ...BUILDING_KINDS, 'land'];
     for (const item of items) {
       const b = document.createElement('button');
       b.className = 'card';
-      const name = item === 'path' ? 'Footpath' : BUILDINGS[item].name;
-      const price = item === 'path' ? `${PATH_COST} / tile` : BUILDINGS[item].cost.toLocaleString('en-US');
-      const sub = item === 'path' ? 'Drag to draw' : `${BUILDINGS[item].w}×${BUILDINGS[item].h} · ${BUILDINGS[item].blurb}`;
-      b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="name">${name}</span><span class="sub">${sub}</span><span class="price"><span class="coin-icon"></span>${price}</span>`;
+      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : BUILDINGS[item].name;
+      const price =
+        item === 'path' ? `${PATH_COST} / tile` : item === 'land' ? '' : BUILDINGS[item].cost.toLocaleString('en-US');
+      const sub =
+        item === 'path'
+          ? 'Drag to draw'
+          : item === 'land'
+            ? '7×7 plots'
+            : `${BUILDINGS[item].w}×${BUILDINGS[item].h} · ${BUILDINGS[item].blurb}`;
+      b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="name">${name}</span><span class="sub">${sub}</span><span class="price"><span class="coin-icon"></span><span data-price>${price}</span></span>`;
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         h.onTrayDown(item, e);
@@ -246,6 +253,11 @@ export class Hud {
   setCoins(n: number): void {
     this.coinsEl.textContent = Math.floor(n).toLocaleString('en-US');
     this.coinsEl.classList.toggle('neg', n < 0);
+  }
+
+  setLandPrice(price: number): void {
+    const el = this.cards.get('land')?.querySelector('[data-price]');
+    if (el) el.textContent = price.toLocaleString('en-US');
   }
 
   setAffordable(item: TrayItem, ok: boolean): void {

@@ -15,8 +15,63 @@ import {
  *
  * Invariants kept by every mutating call:
  *  - every path tile is connected to the dock through other path tiles;
- *  - every building touches at least one path tile (and so reaches the dock).
+ *  - every building touches at least one path tile (and so reaches the dock);
+ *  - paths and buildings sit only on land you own.
+ *
+ * Land (Pass 1): the grid is divided into plots. You start with some and buy the
+ * rest; prices rise with each purchase (GDD: base × 1.35 per plot owned).
  */
+
+/** A square of sea you can buy and raise into land. */
+export interface Plot {
+  id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  owned: boolean;
+  /** False for plots that can never be bought (the harbour in front of the dock). */
+  buyable: boolean;
+}
+
+export interface Layout {
+  size: number;
+  dock: Tile;
+  plots: Plot[];
+}
+
+/** Side of a land plot in tiles. */
+export const PLOT_SIZE = 7;
+export const PLOT_BASE_PRICE = 3000;
+export const PLOT_PRICE_GROWTH = 1.35;
+
+/** A fully owned square island: the original prototype map, still used by tests. */
+export function squareLayout(size: number): Layout {
+  return {
+    size,
+    dock: { x: Math.floor(size / 2), y: size - 1 },
+    plots: [{ id: 0, x: 0, y: 0, w: size, h: size, owned: true, buyable: false }],
+  };
+}
+
+/**
+ * The game map: a 4×4 grid of 7×7 plots. The middle 2×2 (14×14 tiles) is yours to
+ * start; the ring around it is for sale, except the harbour plot in front of the dock.
+ */
+export function gameLayout(): Layout {
+  const n = 4;
+  const plots: Plot[] = [];
+  const dock = { x: 13, y: 20 };
+  for (let py = 0; py < n; py++)
+    for (let px = 0; px < n; px++) {
+      const start = px >= 1 && px <= 2 && py >= 1 && py <= 2;
+      const x = px * PLOT_SIZE;
+      const y = py * PLOT_SIZE;
+      const harbour = dock.x >= x && dock.x < x + PLOT_SIZE && y === dock.y + 1;
+      plots.push({ id: py * n + px, x, y, w: PLOT_SIZE, h: PLOT_SIZE, owned: start, buyable: !start && !harbour });
+    }
+  return { size: n * PLOT_SIZE, dock, plots };
+}
 
 export interface Building {
   id: number;
@@ -36,7 +91,8 @@ export interface Tile {
 export type Result = { ok: true } | { ok: false; reason: string };
 
 export interface WorldSnapshot {
-  version: 1;
+  version: 2;
+  layout: Layout;
   size: number;
   money: number;
   day: number;
@@ -57,6 +113,7 @@ const NEIGHBOURS: ReadonlyArray<[number, number]> = [
 
 export class World {
   readonly size: number;
+  readonly layout: Layout;
   money: number;
   day = 1;
   private nextId = 1;
@@ -64,22 +121,46 @@ export class World {
   private paths: Uint8Array;
   /** Building id per tile, 0 = none. */
   private occ: Int32Array;
+  /** Land flag per tile (inside an owned plot). */
+  private land: Uint8Array;
   private buildingsById = new Map<number, Building>();
   private listeners = new Set<() => void>();
   private moneyListeners = new Set<() => void>();
 
-  constructor(size = 10, money = START_MONEY) {
-    this.size = size;
+  /** `new World(10)` is a fully owned 10×10 island; pass a layout for the plotted game map. */
+  constructor(size: number | Layout = 10, money = START_MONEY) {
+    const layout = typeof size === 'number' ? squareLayout(size) : size;
+    this.layout = structuredClone(layout);
+    this.size = layout.size;
     this.money = money;
-    this.paths = new Uint8Array(size * size);
-    this.occ = new Int32Array(size * size);
+    const cells = this.size * this.size;
+    this.paths = new Uint8Array(cells);
+    this.occ = new Int32Array(cells);
+    this.land = new Uint8Array(cells);
+    this.rebuildLand();
     const dock = this.dock;
     this.paths[this.idx(dock.x, dock.y)] = 1;
   }
 
-  /** The dock's landing tile: the middle of the edge nearest the camera. It is always a path. */
+  /** A new game on the plotted map. */
+  static newGame(money = START_MONEY): World {
+    return new World(gameLayout(), money);
+  }
+
+  /** The dock's landing tile, on the edge nearest the camera. It is always a path. */
   get dock(): Tile {
-    return { x: Math.floor(this.size / 2), y: this.size - 1 };
+    return { ...this.layout.dock };
+  }
+
+  get plots(): Plot[] {
+    return this.layout.plots;
+  }
+
+  private rebuildLand(): void {
+    this.land.fill(0);
+    for (const p of this.layout.plots)
+      if (p.owned)
+        for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) this.land[this.idx(x, y)] = 1;
   }
 
   get buildings(): Building[] {
@@ -90,6 +171,11 @@ export class World {
 
   inBounds(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.size && y < this.size;
+  }
+
+  /** Owned land you can build on. */
+  isLand(x: number, y: number): boolean {
+    return this.inBounds(x, y) && this.land[this.idx(x, y)] === 1;
   }
 
   isPath(x: number, y: number): boolean {
@@ -103,7 +189,45 @@ export class World {
   }
 
   isFree(x: number, y: number): boolean {
-    return this.inBounds(x, y) && !this.isPath(x, y) && !this.buildingAt(x, y);
+    return this.isLand(x, y) && !this.isPath(x, y) && !this.buildingAt(x, y);
+  }
+
+  // ---------- land plots ----------
+
+  plotAt(x: number, y: number): Plot | undefined {
+    return this.layout.plots.find((p) => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h);
+  }
+
+  /** Plots bought so far (not counting the ones you started with). */
+  get plotsBought(): number {
+    return this.layout.plots.filter((p) => p.owned && p.buyable).length;
+  }
+
+  /** Price of the next plot: rises with each one you own. */
+  get plotPrice(): number {
+    return Math.round((PLOT_BASE_PRICE * PLOT_PRICE_GROWTH ** this.plotsBought) / 50) * 50;
+  }
+
+  canBuyPlot(id: number): Result {
+    const p = this.layout.plots.find((q) => q.id === id);
+    if (!p) return fail('No plot there');
+    if (p.owned) return fail('You already own this land');
+    if (!p.buyable) return fail('The harbour stays open water');
+    const touches = this.layout.plots.some((q) => q.owned && sharesEdge(p, q));
+    if (!touches) return fail('Buy land next to your island first');
+    if (this.money < this.plotPrice) return fail('Not enough coins');
+    return OK;
+  }
+
+  buyPlot(id: number): Result & { plot?: Plot } {
+    const check = this.canBuyPlot(id);
+    if (!check.ok) return check;
+    const p = this.layout.plots.find((q) => q.id === id)!;
+    this.money -= this.plotPrice;
+    p.owned = true;
+    this.rebuildLand();
+    this.emit();
+    return { ok: true, plot: p };
   }
 
   pathTiles(): Tile[] {
@@ -145,6 +269,7 @@ export class World {
     const tiles = this.footprintTiles(kind, x, y, rot);
     for (const t of tiles) {
       if (!this.inBounds(t.x, t.y)) return fail('Outside the island');
+      if (!this.isLand(t.x, t.y)) return fail('Buy this land first');
       if (this.isPath(t.x, t.y)) return fail('Blocked by a path');
       if (this.buildingAt(t.x, t.y)) return fail('Blocked by a building');
     }
@@ -178,6 +303,7 @@ export class World {
 
   canPlacePath(x: number, y: number): Result {
     if (!this.inBounds(x, y)) return fail('Outside the island');
+    if (!this.isLand(x, y)) return fail('Buy this land first');
     if (this.isPath(x, y)) return fail('Already a path');
     if (this.buildingAt(x, y)) return fail('Blocked by a building');
     const linked = NEIGHBOURS.some(([dx, dy]) => this.isPath(x + dx, y + dy));
@@ -259,7 +385,8 @@ export class World {
     const paths: number[] = [];
     this.paths.forEach((v, i) => v && paths.push(i));
     return {
-      version: 1,
+      version: 2,
+      layout: structuredClone(this.layout),
       size: this.size,
       money: this.money,
       day: this.day,
@@ -271,7 +398,10 @@ export class World {
 
   /** Replace this world's state with a snapshot (used by undo and load). */
   restore(s: WorldSnapshot): void {
-    if (s.version !== 1 || s.size !== this.size) throw new Error('Incompatible save');
+    if (s.version !== 2 || s.size !== this.size) throw new Error('Incompatible save');
+    this.layout.plots = structuredClone(s.layout.plots);
+    this.layout.dock = { ...s.layout.dock };
+    this.rebuildLand();
     this.money = s.money;
     this.day = s.day;
     this.nextId = s.nextId;
@@ -287,7 +417,8 @@ export class World {
   }
 
   static fromSnapshot(s: WorldSnapshot): World {
-    const w = new World(s.size, s.money);
+    if (s.version !== 2) throw new Error('Incompatible save');
+    const w = new World(s.layout, s.money);
     w.restore(s);
     return w;
   }
@@ -320,6 +451,15 @@ export class World {
   private idx(x: number, y: number): number {
     return y * this.size + x;
   }
+}
+
+/** True if two plots share a side (touching only at a corner doesn't count). */
+function sharesEdge(a: Plot, b: Plot): boolean {
+  const overlapX = a.x < b.x + b.w && b.x < a.x + a.w;
+  const overlapY = a.y < b.y + b.h && b.y < a.y + a.h;
+  const sideBySide = a.x + a.w === b.x || b.x + b.w === a.x;
+  const aboveBelow = a.y + a.h === b.y || b.y + b.h === a.y;
+  return (sideBySide && overlapY) || (aboveBelow && overlapX);
 }
 
 /** Tiles on a 4-connected line from a to b (L-shaped: x first, then y), excluding a. */
