@@ -222,11 +222,17 @@ campaign map with shared research ties the missions together.
 
 ### Steps
 
-1. **Calendar and terrain.** Months and years on the clock and in reports. Islands as data:
+1. ✅ **Calendar and terrain.** Months and years on the clock and in reports. Islands as data:
    terrain per tile (deep and shallow sea, reef, lagoon, sand, grass, jungle, rock), heights 0–3
    with stairs between neighbouring levels and cliffs elsewhere, irregular plots to buy, and
    the dock. Two islands to start: **Coconut Key** (tiny) and **Twin Palms** (medium, with an
    interior lagoon). The current missions move onto them.
+   Done: `src/sim/calendar.ts` and `src/sim/islands.ts` (each island is three text layers you can
+   edit by hand: terrain, heights, plots). Paths climb one level at a time (drawn as ramps);
+   buildings need flat ground; rock can't be built on; building on jungle clears it for 150
+   coins a tile; plot prices scale with their land area. Driftwood Beginnings is on Coconut
+   Key, Family Cove and the sandbox on Twin Palms. Guest stays still read in nights: a booking
+   length, not calendar time.
 2. **Ratings, decoration and maintenance.** The four ratings and the overall; a decor catalogue
    (palms, flower beds, tiki torches, lamp posts, benches, hammocks, beach chairs, signs) with
    an appeal radius and Hawaiian and Caribbean themes; condition on every building and decor

@@ -37,10 +37,31 @@ export interface Plot {
 }
 
 export interface Layout {
+  /** Island id (Pass 4); absent on the prototype's square maps. */
+  id?: string;
+  name?: string;
   size: number;
   dock: Tile;
   plots: Plot[];
+  /** One terrain code per tile, row by row (see islands.ts); absent = all grass. */
+  terrain?: string;
+  /** One digit (0–3) per tile; absent = flat. */
+  heights?: string;
+  /** Plot letter per tile ('.' = none); absent = the plots' rectangles. */
+  plotMap?: string;
 }
+
+/** Terrain codes (see islands.ts). */
+export const DEEP = 126; // '~'
+const GROUND = new Set(['s', 'g', 'j', 'k'].map((c) => c.charCodeAt(0)));
+const GRASS = 'g'.charCodeAt(0);
+const JUNGLE = 'j'.charCodeAt(0);
+const ROCK = 'k'.charCodeAt(0);
+/** Clearing a jungle tile to build on it. */
+export const JUNGLE_CLEAR_COST = 150;
+/** Height of one terrain level in tiles (used by the renderer too). */
+export const LEVEL_HEIGHT = 0.45;
+const PLOT_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 /** Side of a land plot in tiles. */
 export const PLOT_SIZE = 7;
@@ -105,7 +126,8 @@ export interface Tile {
 export type Result = { ok: true } | { ok: false; reason: string };
 
 export interface WorldSnapshot {
-  version: 2;
+  /** 2: prototype maps (flat, rectangular plots); 3: islands with terrain (Pass 4). */
+  version: 2 | 3;
   layout: Layout;
   size: number;
   money: number;
@@ -126,8 +148,8 @@ const NEIGHBOURS: ReadonlyArray<[number, number]> = [
 ];
 
 export class World {
-  readonly size: number;
-  readonly layout: Layout;
+  size: number;
+  layout: Layout;
   money: number;
   day = 1;
   private nextId = 1;
@@ -137,6 +159,13 @@ export class World {
   private occ: Int32Array;
   /** Land flag per tile (inside an owned plot). */
   private land: Uint8Array;
+  /** Terrain code per tile (char code). Jungle turns to grass where you build. */
+  private terrain!: Uint8Array;
+  private heights!: Uint8Array;
+  /** Plot id per tile, -1 for none. */
+  private plotIdx!: Int16Array;
+  /** Plot ids that share an edge with each plot. */
+  private plotNeighbours = new Map<number, Set<number>>();
   private buildingsById = new Map<number, Building>();
   /** Extra rule from outside the map, e.g. research unlocks (set by the Sim). */
   gate: ((kind: BuildingKind) => Result) | null = null;
@@ -149,18 +178,66 @@ export class World {
     this.layout = structuredClone(layout);
     this.size = layout.size;
     this.money = money;
-    const cells = this.size * this.size;
-    this.paths = new Uint8Array(cells);
-    this.occ = new Int32Array(cells);
-    this.land = new Uint8Array(cells);
-    this.rebuildLand();
+    this.paths = new Uint8Array(0);
+    this.occ = new Int32Array(0);
+    this.land = new Uint8Array(0);
+    this.applyLayout(this.layout);
     const dock = this.dock;
     this.paths[this.idx(dock.x, dock.y)] = 1;
   }
 
-  /** A new game on the plotted map. */
+  /** Size the grids for a layout and decode its terrain, heights and plots. */
+  private applyLayout(layout: Layout): void {
+    this.layout = layout;
+    this.size = layout.size;
+    const cells = this.size * this.size;
+    if (this.paths.length !== cells) {
+      this.paths = new Uint8Array(cells);
+      this.occ = new Int32Array(cells);
+      this.land = new Uint8Array(cells);
+    }
+    this.terrain = new Uint8Array(cells).fill(GRASS);
+    this.heights = new Uint8Array(cells);
+    this.plotIdx = new Int16Array(cells).fill(-1);
+    if (layout.terrain) for (let i = 0; i < cells; i++) this.terrain[i] = layout.terrain.charCodeAt(i);
+    if (layout.heights) for (let i = 0; i < cells; i++) this.heights[i] = layout.heights.charCodeAt(i) - 48;
+    if (layout.plotMap)
+      for (let i = 0; i < cells; i++) {
+        const c = layout.plotMap[i];
+        if (c !== '.') this.plotIdx[i] = PLOT_LETTERS.indexOf(c);
+      }
+    else
+      for (const p of layout.plots)
+        for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) this.plotIdx[this.idx(x, y)] = p.id;
+    this.plotNeighbours.clear();
+    for (const p of layout.plots) this.plotNeighbours.set(p.id, new Set());
+    for (let y = 0; y < this.size; y++)
+      for (let x = 0; x < this.size; x++) {
+        const a = this.plotIdx[this.idx(x, y)];
+        if (a < 0) continue;
+        for (const [dx, dy] of [
+          [1, 0],
+          [0, 1],
+        ]) {
+          if (!this.inBounds(x + dx, y + dy)) continue;
+          const b = this.plotIdx[this.idx(x + dx, y + dy)];
+          if (b >= 0 && b !== a) {
+            this.plotNeighbours.get(a)?.add(b);
+            this.plotNeighbours.get(b)?.add(a);
+          }
+        }
+      }
+    this.rebuildLand();
+  }
+
+  /** A new game on the prototype's plotted square map (the playtest harness and tests use it). */
   static newGame(money = START_MONEY): World {
     return new World(gameLayout(), money);
+  }
+
+  /** A new game on an authored island (Pass 4). */
+  static onIsland(layout: Layout, money = START_MONEY): World {
+    return new World(layout, money);
   }
 
   /** The dock's landing tile, on the edge nearest the camera. It is always a path. */
@@ -173,10 +250,8 @@ export class World {
   }
 
   private rebuildLand(): void {
-    this.land.fill(0);
-    for (const p of this.layout.plots)
-      if (p.owned)
-        for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) this.land[this.idx(x, y)] = 1;
+    const owned = new Set(this.layout.plots.filter((p) => p.owned).map((p) => p.id));
+    for (let i = 0; i < this.land.length; i++) this.land[i] = owned.has(this.plotIdx[i]) && GROUND.has(this.terrain[i]) ? 1 : 0;
   }
 
   get buildings(): Building[] {
@@ -192,6 +267,40 @@ export class World {
   /** Owned land you can build on. */
   isLand(x: number, y: number): boolean {
     return this.inBounds(x, y) && this.land[this.idx(x, y)] === 1;
+  }
+
+  /** Terrain code at a tile ('~' outside the map). */
+  terrainAt(x: number, y: number): string {
+    return this.inBounds(x, y) ? String.fromCharCode(this.terrain[this.idx(x, y)]) : '~';
+  }
+
+  /** Terrain level 0–3 (0 for water and outside the map). */
+  heightAt(x: number, y: number): number {
+    return this.inBounds(x, y) ? this.heights[this.idx(x, y)] : 0;
+  }
+
+  /** Any land, owned or not (sand, grass, jungle, rock). */
+  isGround(x: number, y: number): boolean {
+    return this.inBounds(x, y) && GROUND.has(this.terrain[this.idx(x, y)]);
+  }
+
+  isWater(x: number, y: number): boolean {
+    return !this.isGround(x, y);
+  }
+
+  /** Water for the shore rule. On the prototype's square maps, land you don't own is still sea. */
+  private isShore(x: number, y: number): boolean {
+    return this.isWater(x, y) || (!this.layout.terrain && !this.isLand(x, y));
+  }
+
+  /** Plot id at a tile, or -1. */
+  plotIdAt(x: number, y: number): number {
+    return this.inBounds(x, y) ? this.plotIdx[this.idx(x, y)] : -1;
+  }
+
+  /** Two neighbouring path tiles connect if they're at most one level apart (stairs). */
+  linked(ax: number, ay: number, bx: number, by: number): boolean {
+    return this.isPath(ax, ay) && this.isPath(bx, by) && Math.abs(this.heightAt(ax, ay) - this.heightAt(bx, by)) <= 1;
   }
 
   isPath(x: number, y: number): boolean {
@@ -211,7 +320,16 @@ export class World {
   // ---------- land plots ----------
 
   plotAt(x: number, y: number): Plot | undefined {
-    return this.layout.plots.find((p) => x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h);
+    const id = this.plotIdAt(x, y);
+    return id < 0 ? undefined : this.layout.plots.find((p) => p.id === id);
+  }
+
+  /** Land tiles in a plot (prices scale with it). */
+  plotTiles(id: number): Tile[] {
+    const out: Tile[] = [];
+    for (let y = 0; y < this.size; y++)
+      for (let x = 0; x < this.size; x++) if (this.plotIdx[this.idx(x, y)] === id && this.isGround(x, y)) out.push({ x, y });
+    return out;
   }
 
   /** Plots bought so far (not counting the ones you started with). */
@@ -219,9 +337,27 @@ export class World {
     return this.layout.plots.filter((p) => p.owned && p.buyable).length;
   }
 
-  /** Price of the next plot: rises with each one you own. */
+  /** Price of the next standard (7×7) plot: rises with each one you own. */
   get plotPrice(): number {
     return Math.round((PLOT_BASE_PRICE * PLOT_PRICE_GROWTH ** this.plotsBought) / 50) * 50;
+  }
+
+  /** Price of a given plot: the standard price scaled by its land area. */
+  priceOf(id: number): number {
+    const tiles = this.plotTiles(id).length;
+    const base = PLOT_BASE_PRICE * PLOT_PRICE_GROWTH ** this.plotsBought * (tiles / (PLOT_SIZE * PLOT_SIZE));
+    return Math.max(500, Math.round(base / 50) * 50);
+  }
+
+  /** The cheapest plot you could buy next, or null when none is next to your land. */
+  get nextPlotPrice(): number | null {
+    const prices = this.layout.plots.filter((p) => !p.owned && p.buyable && this.touchesOwned(p.id)).map((p) => this.priceOf(p.id));
+    return prices.length ? Math.min(...prices) : null;
+  }
+
+  private touchesOwned(id: number): boolean {
+    const n = this.plotNeighbours.get(id);
+    return !!n && this.layout.plots.some((q) => q.owned && n.has(q.id));
   }
 
   canBuyPlot(id: number): Result {
@@ -229,9 +365,8 @@ export class World {
     if (!p) return fail('No plot there');
     if (p.owned) return fail('You already own this land');
     if (!p.buyable) return fail('The harbour stays open water');
-    const touches = this.layout.plots.some((q) => q.owned && sharesEdge(p, q));
-    if (!touches) return fail('Buy land next to your island first');
-    if (this.money < this.plotPrice) return fail('Not enough coins');
+    if (!this.touchesOwned(p.id)) return fail('Buy land next to your island first');
+    if (this.money < this.priceOf(p.id)) return fail('Not enough coins');
     return OK;
   }
 
@@ -239,7 +374,7 @@ export class World {
     const check = this.canBuyPlot(id);
     if (!check.ok) return check;
     const p = this.layout.plots.find((q) => q.id === id)!;
-    this.money -= this.plotPrice;
+    this.money -= this.priceOf(p.id);
     p.owned = true;
     this.rebuildLand();
     this.emit();
@@ -261,7 +396,10 @@ export class World {
     return out;
   }
 
-  /** Path tiles orthogonally adjacent to a footprint. Guests will enter from these (M2). */
+  /**
+   * Path tiles orthogonally adjacent to a footprint and at most one level away from it.
+   * Guests enter from these (M2).
+   */
   accessTiles(tiles: Tile[]): Tile[] {
     const inside = new Set(tiles.map((t) => this.idx(t.x, t.y)));
     const seen = new Set<number>();
@@ -271,6 +409,7 @@ export class World {
         const nx = t.x + dx;
         const ny = t.y + dy;
         if (!this.isPath(nx, ny)) continue;
+        if (Math.abs(this.heightAt(nx, ny) - this.heightAt(t.x, t.y)) > 1) continue;
         const i = this.idx(nx, ny);
         if (inside.has(i) || seen.has(i)) continue;
         seen.add(i);
@@ -285,26 +424,40 @@ export class World {
     const gate = this.gate?.(kind);
     if (gate && !gate.ok) return gate;
     const tiles = this.footprintTiles(kind, x, y, rot);
+    const level = this.heightAt(x, y);
     for (const t of tiles) {
       if (!this.inBounds(t.x, t.y)) return fail('Outside the island');
+      if (!this.isGround(t.x, t.y)) return fail('That’s water');
       if (!this.isLand(t.x, t.y)) return fail('Buy this land first');
+      if (this.terrain[this.idx(t.x, t.y)] === ROCK) return fail('Too rocky to build');
+      if (this.heightAt(t.x, t.y) !== level) return fail('Needs flat ground');
       if (this.isPath(t.x, t.y)) return fail('Blocked by a path');
       if (this.buildingAt(t.x, t.y)) return fail('Blocked by a building');
     }
     if (this.accessTiles(tiles).length === 0) return fail('Must touch a path');
-    if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => !this.isLand(t.x + dx, t.y + dy))))
+    if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => this.isShore(t.x + dx, t.y + dy))))
       return fail('Must be on the shore');
-    if (this.money < BUILDINGS[kind].cost) return fail('Not enough coins');
+    if (this.money < this.buildCost(kind, x, y, rot)) return fail('Not enough coins');
     return OK;
+  }
+
+  /** A building's price plus clearing any jungle under it. */
+  buildCost(kind: BuildingKind, x: number, y: number, rot: Rotation): number {
+    const jungle = this.footprintTiles(kind, x, y, rot).filter((t) => this.terrainAt(t.x, t.y) === 'j').length;
+    return BUILDINGS[kind].cost + jungle * JUNGLE_CLEAR_COST;
   }
 
   placeBuilding(kind: BuildingKind, x: number, y: number, rot: Rotation): Result & { building?: Building } {
     const check = this.canPlaceBuilding(kind, x, y, rot);
     if (!check.ok) return check;
     const b: Building = { id: this.nextId++, kind, x, y, rot, builtDay: this.day };
+    this.money -= this.buildCost(kind, x, y, rot);
     this.buildingsById.set(b.id, b);
-    for (const t of this.footprintTiles(kind, x, y, rot)) this.occ[this.idx(t.x, t.y)] = b.id;
-    this.money -= BUILDINGS[kind].cost;
+    for (const t of this.footprintTiles(kind, x, y, rot)) {
+      const i = this.idx(t.x, t.y);
+      this.occ[i] = b.id;
+      if (this.terrain[i] === JUNGLE) this.terrain[i] = GRASS;
+    }
     this.emit();
     return { ok: true, building: b };
   }
@@ -357,11 +510,15 @@ export class World {
 
   canPlacePath(x: number, y: number): Result {
     if (!this.inBounds(x, y)) return fail('Outside the island');
+    if (!this.isGround(x, y)) return fail('That’s water');
     if (!this.isLand(x, y)) return fail('Buy this land first');
+    if (this.terrain[this.idx(x, y)] === ROCK) return fail('Too rocky for a path');
     if (this.isPath(x, y)) return fail('Already a path');
     if (this.buildingAt(x, y)) return fail('Blocked by a building');
-    const linked = NEIGHBOURS.some(([dx, dy]) => this.isPath(x + dx, y + dy));
-    if (!linked) return fail('Paths must lead back to the dock');
+    const h = this.heightAt(x, y);
+    const near = NEIGHBOURS.filter(([dx, dy]) => this.isPath(x + dx, y + dy));
+    if (!near.length) return fail('Paths must lead back to the dock');
+    if (!near.some(([dx, dy]) => Math.abs(this.heightAt(x + dx, y + dy) - h) <= 1)) return fail('Too steep: climb one level at a time');
     if (this.money < PATH_COST) return fail('Not enough coins');
     return OK;
   }
@@ -423,7 +580,7 @@ export class World {
       for (const [dx, dy] of NEIGHBOURS) {
         const nx = t.x + dx;
         const ny = t.y + dy;
-        if (!this.isPath(nx, ny)) continue;
+        if (!this.linked(t.x, t.y, nx, ny)) continue;
         const i = this.idx(nx, ny);
         if (seen.has(i)) continue;
         seen.add(i);
@@ -438,9 +595,11 @@ export class World {
   snapshot(): WorldSnapshot {
     const paths: number[] = [];
     this.paths.forEach((v, i) => v && paths.push(i));
+    let terrain = '';
+    if (this.layout.terrain) for (let i = 0; i < this.terrain.length; i++) terrain += String.fromCharCode(this.terrain[i]);
     return {
-      version: 2,
-      layout: structuredClone(this.layout),
+      version: 3,
+      layout: { ...structuredClone(this.layout), ...(this.layout.terrain ? { terrain } : {}) },
       size: this.size,
       money: this.money,
       day: this.day,
@@ -452,10 +611,10 @@ export class World {
 
   /** Replace this world's state with a snapshot (used by undo and load). */
   restore(s: WorldSnapshot): void {
-    if (s.version !== 2 || s.size !== this.size) throw new Error('Incompatible save');
-    this.layout.plots = structuredClone(s.layout.plots);
-    this.layout.dock = { ...s.layout.dock };
-    this.rebuildLand();
+    if (s.version !== 2 && s.version !== 3) throw new Error('Incompatible save');
+    if (s.layout.size !== s.size) throw new Error('Incompatible save');
+    // A different island (a new game) resizes the grids; the same one just reloads terrain.
+    this.applyLayout(structuredClone(s.layout));
     this.money = s.money;
     this.day = s.day;
     this.nextId = s.nextId;
@@ -471,7 +630,7 @@ export class World {
   }
 
   static fromSnapshot(s: WorldSnapshot): World {
-    if (s.version !== 2) throw new Error('Incompatible save');
+    if (s.version !== 2 && s.version !== 3) throw new Error('Incompatible save');
     const w = new World(s.layout, s.money);
     w.restore(s);
     return w;
@@ -505,15 +664,6 @@ export class World {
   private idx(x: number, y: number): number {
     return y * this.size + x;
   }
-}
-
-/** True if two plots share a side (touching only at a corner doesn't count). */
-function sharesEdge(a: Plot, b: Plot): boolean {
-  const overlapX = a.x < b.x + b.w && b.x < a.x + a.w;
-  const overlapY = a.y < b.y + b.h && b.y < a.y + a.h;
-  const sideBySide = a.x + a.w === b.x || b.x + b.w === a.x;
-  const aboveBelow = a.y + a.h === b.y || b.y + b.h === a.y;
-  return (sideBySide && overlapY) || (aboveBelow && overlapX);
 }
 
 /** Tiles on a 4-connected line from a to b (L-shaped: x first, then y), excluding a. */

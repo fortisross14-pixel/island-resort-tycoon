@@ -742,6 +742,7 @@ button:disabled { cursor: default; opacity: 0.4; }
 }
 .choice:hover { border-color: var(--coral); }
 .choice b { font-family: var(--display); font-size: 18px; font-weight: 700; }
+.choice .island { font-size: 12px; font-weight: 800; color: var(--lagoon); text-transform: uppercase; letter-spacing: 0.06em; }
 .choice ul { margin: 2px 0; padding-left: 0; list-style: none; font-size: 13px; color: var(--ink-2); }
 .choice small { color: var(--ink-2); font-size: 12px; }
 .certificate { text-align: center; }

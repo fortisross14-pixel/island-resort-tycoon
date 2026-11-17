@@ -166,8 +166,8 @@ export class Stage {
     this.requestRender();
   }
 
-  /** Ground-plane point under a screen position. */
-  groundAt(clientX: number, clientY: number): THREE.Vector3 | null {
+  /** Point under a screen position on the horizontal plane at height `y` (the ground by default). */
+  groundAt(clientX: number, clientY: number, y = 0): THREE.Vector3 | null {
     const rect = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
@@ -175,7 +175,8 @@ export class Stage {
     );
     this.raycaster.setFromCamera(ndc, this.camera);
     const p = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(this.ground, p) ? p : null;
+    const plane = y === 0 ? this.ground : new THREE.Plane(new THREE.Vector3(0, 1, 0), -y);
+    return this.raycaster.ray.intersectPlane(plane, p) ? p : null;
   }
 
   /** Pan so the ground point under (x0,y0) ends up under (x1,y1). */

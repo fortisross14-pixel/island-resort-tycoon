@@ -680,34 +680,45 @@ export function mergeLayer(models: THREE.Object3D[]): THREE.Group | null {
 }
 
 /**
- * Every footpath tile as one mesh: a centre pad per tile plus a strip towards each linked
- * neighbour, so junctions read as one walkway. Pieces abut exactly so coplanar tops can't z-fight.
+ * Every footpath as one mesh: a pad per tile plus a strip for each link between neighbours.
+ * A link between two levels is a ramp (the stairs), so the walkway reads as one piece.
+ * Pieces abut exactly so coplanar tops can't z-fight.
  */
-export function pathMesh(tiles: Array<{ x: number; y: number; n: boolean; s: boolean; e: boolean; w: boolean }>): THREE.Mesh | null {
-  if (!tiles.length) return null;
+export function pathMesh(
+  pads: Array<{ x: number; y: number; top: number }>,
+  links: Array<{ x: number; y: number; top: number; dir: 'e' | 's'; to: number }>,
+): THREE.Mesh | null {
+  if (!pads.length) return null;
   const pos: number[] = [];
-  const y = 0.02;
-  const quad = (cx: number, cz: number, w: number, d: number) => {
-    const x0 = cx - w / 2;
-    const x1 = cx + w / 2;
-    const z0 = cz - d / 2;
-    const z1 = cz + d / 2;
-    pos.push(x0, y, z0, x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z1, x1, y, z0);
-  };
-  for (const t of tiles) {
-    const cx = t.x + 0.5;
-    const cz = t.y + 0.5;
-    quad(cx, cz, 0.7, 0.7);
-    if (t.n) quad(cx, cz - 0.425, 0.7, 0.15);
-    if (t.s) quad(cx, cz + 0.425, 0.7, 0.15);
-    if (t.e) quad(cx + 0.425, cz, 0.15, 0.7);
-    if (t.w) quad(cx - 0.425, cz, 0.15, 0.7);
+  const lift = 0.02;
+  // Corners in order a, b, c, d around the quad (counter-clockwise seen from above).
+  const quad = (ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number, dx: number, dy: number, dz: number) =>
+    pos.push(ax, ay, az, bx, by, bz, cx, cy, cz, ax, ay, az, cx, cy, cz, dx, dy, dz);
+  for (const p of pads) {
+    const y = p.top + lift;
+    const x0 = p.x + 0.15;
+    const x1 = p.x + 0.85;
+    const z0 = p.y + 0.15;
+    const z1 = p.y + 0.85;
+    quad(x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0);
+  }
+  for (const l of links) {
+    const a = l.top + lift;
+    const b = l.to + lift;
+    if (l.dir === 'e') {
+      // From this pad's east edge to the next pad's west edge.
+      const x0 = l.x + 0.85;
+      const x1 = l.x + 1.15;
+      quad(x0, a, l.y + 0.15, x0, a, l.y + 0.85, x1, b, l.y + 0.85, x1, b, l.y + 0.15);
+    } else {
+      const z0 = l.y + 0.85;
+      const z1 = l.y + 1.15;
+      quad(l.x + 0.15, a, z0, l.x + 0.15, b, z1, l.x + 0.85, b, z1, l.x + 0.85, a, z0);
+    }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  const nrm = new Float32Array(pos.length);
-  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
-  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, mat(PALETTE.path));
   mesh.receiveShadow = true;
   return mesh;

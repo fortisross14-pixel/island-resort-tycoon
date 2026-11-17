@@ -28,6 +28,8 @@ export interface ScenarioDef {
   id: string;
   name: string;
   blurb: string;
+  /** Island the mission is played on (see islands.ts). */
+  island: string;
   startMoney: number;
   /** Days to earn medals in; after that the best medal so far is final. */
   days: number;
@@ -40,7 +42,8 @@ export const SCENARIOS: ScenarioDef[] = [
   {
     id: 'driftwood',
     name: 'Driftwood Beginnings',
-    blurb: 'A quiet sandbar and a ferry full of curious travellers. Build rooms, feed people, and earn your first stars.',
+    island: 'coconutKey',
+    blurb: 'A tiny island and a ferry full of curious travellers. Build rooms, feed people, and earn your first stars.',
     startMoney: 13000,
     days: 30,
     medals: {
@@ -64,6 +67,7 @@ export const SCENARIOS: ScenarioDef[] = [
   {
     id: 'familyCove',
     name: 'Family Cove',
+    island: 'twinPalms',
     blurb: 'A calm bay where families come back year after year. Keep the kids busy and the walks short.',
     startMoney: 15000,
     days: 30,

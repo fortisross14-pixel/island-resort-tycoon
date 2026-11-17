@@ -53,7 +53,7 @@ export class PathGraph {
       for (const [dx, dy] of NEIGHBOURS) {
         const nx = x + dx;
         const ny = y + dy;
-        if (!w.isPath(nx, ny)) continue;
+        if (!w.linked(x, y, nx, ny)) continue;
         const j = ny * n + nx;
         if (f[j] <= d) continue;
         f[j] = d;
@@ -87,7 +87,7 @@ export class PathGraph {
       for (const [dx, dy] of NEIGHBOURS) {
         const nx = x + dx;
         const ny = y + dy;
-        if (!w.inBounds(nx, ny)) continue;
+        if (!w.inBounds(nx, ny) || !w.linked(x, y, nx, ny)) continue;
         if (f[ny * n + nx] === d - 1) {
           best = { x: nx, y: ny };
           break;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { walkHeight } from './terrain';
 import { MAX_GUESTS, isMoving, isVisible, type Guest, type Sim } from '../sim/sim';
 import { mat } from './models';
 import type { Stage } from './stage';
@@ -88,7 +89,7 @@ export class GuestView {
         const [ox2, oz2] = PARTY_OFFSETS[k % PARTY_OFFSETS.length];
         const child = g.type === 'family' && k >= 2;
         const bob = moving ? Math.abs(Math.sin(this.time * 9 + g.look + k * 1.3)) * 0.05 : 0;
-        this.p.set(x + ox2, 0.02 + bob, z + oz2);
+        this.p.set(x + ox2, walkHeight(this.sim.world, x + ox2, z + oz2) + 0.02 + bob, z + oz2);
         const sc = child ? 0.68 : 1;
         this.s.set(sc, sc, sc);
         this.m.compose(this.p, this.q, this.s);
@@ -100,7 +101,7 @@ export class GuestView {
       }
       if (g.id === this.selected) {
         this.ring.visible = true;
-        this.ring.position.set(x + (g.size - 1) * 0.1, 0.06, z + (g.size - 1) * 0.06);
+        this.ring.position.set(x + (g.size - 1) * 0.1, walkHeight(this.sim.world, x, z) + 0.06, z + (g.size - 1) * 0.06);
       }
     }
     for (const im of [this.bodies, this.heads]) {
@@ -119,7 +120,7 @@ export class GuestView {
       if (!isVisible(g)) continue;
       const [ox, oz] = offset(g);
       // Aim at the middle of the figure (or between the two people of a couple).
-      this.p.set(g.x + ox + (g.size - 1) * 0.1, 0.28, g.z + oz + (g.size - 1) * 0.06).project(camera);
+      this.p.set(g.x + ox + (g.size - 1) * 0.1, walkHeight(this.sim.world, g.x, g.z) + 0.28, g.z + oz + (g.size - 1) * 0.06).project(camera);
       const sx = rect.left + ((this.p.x + 1) / 2) * rect.width;
       const sy = rect.top + ((1 - this.p.y) / 2) * rect.height;
       const d = Math.hypot(sx - clientX, sy - clientY);

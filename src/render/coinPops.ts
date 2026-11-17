@@ -23,7 +23,7 @@ export class CoinPops {
   constructor(private stage: Stage) {}
 
   /** Negative amounts show a cost ("−1,200") in red. */
-  spawn(x: number, z: number, amount: number): void {
+  spawn(x: number, z: number, amount: number, base = 0): void {
     if (this.pops.length >= MAX_POPS) this.remove(this.pops[0]);
     const mat = new THREE.SpriteMaterial({ map: this.texture(amount), depthTest: false, transparent: true });
     const sprite = new THREE.Sprite(mat);
@@ -33,7 +33,7 @@ export class CoinPops {
     sprite.center.set(0.5, 0);
     sprite.renderOrder = 12;
     const jitter = amount < 0 ? 0 : (Math.random() - 0.5) * 0.4;
-    const y0 = amount < 0 ? 1.8 : 1.2;
+    const y0 = base + (amount < 0 ? 1.8 : 1.2);
     sprite.position.set(x + jitter, y0, z - jitter);
     this.stage.scene.add(sprite);
     this.pops.push({ sprite, age: 0, y0 });

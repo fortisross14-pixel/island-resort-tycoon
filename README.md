@@ -61,6 +61,9 @@ src/
   ui/sfx.ts   synthesized sound effects (WebAudio)
   ui/coach.ts guided first day
   sim/save.ts save parsing and the version migration chain
+  sim/islands.ts    authored islands: terrain, heights and plots as text maps
+  sim/calendar.ts   months and years for the clock and reports
+  render/terrain.ts island terrain, water, jungle, rocks, palms and the pier
 public/      web manifest, icons and the offline service worker
   ui/panel.ts guest and building info panel
   ui/report.ts night report

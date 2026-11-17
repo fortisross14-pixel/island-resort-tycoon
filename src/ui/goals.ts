@@ -1,3 +1,4 @@
+import { islandDef } from '../sim/islands';
 import { duration, monthYear } from '../sim/calendar';
 import { MEDALS, MEDAL_NAMES, SCENARIOS, type Campaign, type MedalTier } from '../sim/scenario';
 
@@ -141,7 +142,7 @@ export class NewGameDialog {
   show(canCancel: boolean, guide = false): void {
     const cards = SCENARIOS.map(
       (s) => `<button class="choice" data-scenario="${s.id}">
-        <b>${s.name}</b><span>${s.blurb}</span>
+        <b>${s.name}</b><span class="island">${islandDef(s.island).name} · ${islandDef(s.island).scale} island</span><span>${s.blurb}</span>
         <ul>${MEDALS.map((t) => `<li>${MEDAL_ICON[t]} ${s.medals[t].map((g) => g.label).join(', ')}</li>`).join('')}</ul>
         <small>${duration(s.days)} · ${s.startMoney.toLocaleString('en-US')} coins · research unlocks buildings</small>
       </button>`,
@@ -150,7 +151,7 @@ export class NewGameDialog {
       <header><small>Island Resort Tycoon</small><h2>New island</h2></header>
       <label class="guide"><input type="checkbox" data-tutorial ${guide ? 'checked' : ''} /> Guide me through the first day</label>
       <div class="choices">${cards}
-        <button class="choice" data-sandbox><b>Sandbox</b><span>Every building unlocked, 50,000 coins, no goals. Build what you like.</span></button>
+        <button class="choice" data-sandbox><b>Sandbox</b><span class="island">Twin Palms · medium island</span><span>Every building unlocked, 50,000 coins, no goals. Build what you like.</span></button>
       </div>
       ${canCancel ? '<button class="cancel" data-cancel>Keep playing my island</button>' : ''}
     </section>`;

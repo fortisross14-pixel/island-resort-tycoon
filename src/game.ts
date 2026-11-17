@@ -1,6 +1,6 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, footprint, type BuildingKind, type Rotation } from './sim/buildings';
 import { History } from './sim/history';
-import { World, manhattanSteps, type Tile } from './sim/world';
+import { LEVEL_HEIGHT, World, manhattanSteps, type Tile } from './sim/world';
 import { Sim, TICK, type SimEvent } from './sim/sim';
 import { parseSave, type SaveFile } from './sim/save';
 import { CoinPops } from './render/coinPops';
@@ -9,6 +9,10 @@ import { InfoPanel } from './ui/panel';
 import { NightReportView } from './ui/report';
 import { GoalsView, NewGameDialog, certificateHtml, type NewGameChoice } from './ui/goals';
 import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
+import { islandLayout } from './sim/islands';
+
+/** The sandbox is played on the biggest island so far. */
+const SANDBOX_ISLAND = 'twinPalms';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { setWindowGlow } from './render/models';
@@ -93,6 +97,7 @@ export class Game {
   private researchKey = '';
   private saveWarned = false;
   private lightInit = false;
+  private lastBuildCost = 0;
   private coach!: Coach;
   private coachBase = { paths: 0, arrived: false, checkedIn: 0, night: false };
   /** The arrival card being placed (dragged, or tapped then a room tapped). */
@@ -110,7 +115,7 @@ export class Game {
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
     const { save, discarded, note } = loadSave();
-    this.world = save ? World.fromSnapshot(save.world) : World.newGame();
+    this.world = save ? World.fromSnapshot(save.world) : World.onIsland(islandLayout(SCENARIOS[0].island));
     this.sim = new Sim(this.world);
     let simLoaded = false;
     if (save?.sim) {
@@ -316,7 +321,7 @@ export class Game {
         if (!b) return;
         const { w, h } = footprint(b.kind, b.rot);
         this.sfx.play('coin');
-        return this.coinPops.spawn(b.x + w / 2, b.y + h / 2, e.amount);
+        return this.coinPops.spawn(b.x + w / 2, b.y + h / 2, e.amount, this.world.heightAt(b.x, b.y) * LEVEL_HEIGHT);
       }
       case 'checkedIn':
         this.sfx.play('chime');
@@ -550,7 +555,8 @@ export class Game {
   /** Start a scenario or the sandbox on a fresh island. */
   private startNewGame(choice: NewGameChoice): void {
     const scenario = 'scenario' in choice ? SCENARIOS.find((x) => x.id === choice.scenario) : undefined;
-    this.world.restore(World.newGame(scenario ? scenario.startMoney : 50000).snapshot());
+    const island = scenario ? scenario.island : SANDBOX_ISLAND;
+    this.world.restore(World.onIsland(islandLayout(island), scenario ? scenario.startMoney : 50000).snapshot());
     this.view.frameStart();
     this.sim.reset();
     this.sim.progression = !!scenario;
@@ -598,8 +604,9 @@ export class Game {
   private onMoneyChange(): void {
     this.hud.setCoins(this.world.money);
     this.hud.setAffordable('path', this.world.money >= PATH_COST);
-    this.hud.setLandPrice(this.world.plotPrice);
-    this.hud.setAffordable('land', this.world.money >= this.world.plotPrice);
+    const land = this.world.nextPlotPrice ?? this.world.plotPrice;
+    this.hud.setLandPrice(land);
+    this.hud.setAffordable('land', this.world.money >= land);
     for (const k of BUILDING_KINDS) this.hud.setAffordable(k, this.world.money >= BUILDINGS[k].cost);
     // A ghost that just became affordable should turn green.
     if (this.tool.type === 'build' && this.ghostAt) this.previewBuild(this.ghostAt);
@@ -627,7 +634,14 @@ export class Game {
 
   // ---------- previews ----------
 
+  /** The tile under a screen point, taking hills into account: the highest level that matches. */
   private tileAt(clientX: number, clientY: number): Tile | null {
+    for (let lvl = 3; lvl >= 1; lvl--) {
+      const p = this.stage.groundAt(clientX, clientY, lvl * LEVEL_HEIGHT);
+      if (!p) continue;
+      const t = { x: Math.floor(p.x), y: Math.floor(p.z) };
+      if (this.world.heightAt(t.x, t.y) === lvl) return t;
+    }
     const p = this.stage.groundAt(clientX, clientY);
     return p ? { x: Math.floor(p.x), y: Math.floor(p.z) } : null;
   }
@@ -673,6 +687,7 @@ export class Game {
     if (this.tool.type !== 'build') return;
     const a = this.buildAnchor(t);
     const { kind, rot } = this.tool;
+    this.lastBuildCost = this.world.buildCost(kind, a.x, a.y, rot);
     const r = this.history.run(() => this.world.placeBuilding(kind, a.x, a.y, rot));
     if (!r.ok) {
       this.sfx.play('error');
@@ -680,7 +695,7 @@ export class Game {
     } else {
       const { w, h } = footprint(kind, rot);
       this.sfx.play('place');
-      this.coinPops.spawn(a.x + w / 2, a.y + h / 2, -BUILDINGS[kind].cost);
+      this.coinPops.spawn(a.x + w / 2, a.y + h / 2, -this.lastBuildCost, this.world.heightAt(a.x, a.y) * LEVEL_HEIGHT);
     }
     this.previewBuild(t);
   }
@@ -976,7 +991,7 @@ export class Game {
   private tryBuyLand(t: Tile): void {
     const plot = this.world.plotAt(t.x, t.y);
     if (!plot) return;
-    const price = this.world.plotPrice;
+    const price = this.world.priceOf(plot.id);
     const r = this.history.run(() => this.world.buyPlot(plot.id));
     if (!r.ok) {
       this.sfx.play('error');
