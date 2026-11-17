@@ -1,8 +1,10 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, footprint, type BuildingKind, type Rotation } from './sim/buildings';
 import { History } from './sim/history';
 import { World, manhattanSteps, type Tile, type WorldSnapshot } from './sim/world';
-import { GUEST_TYPES, Sim, TICK, type SimEvent, type SimSnapshot } from './sim/sim';
+import { Sim, TICK, type SimEvent, type SimSnapshot } from './sim/sim';
+import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
+import { InfoPanel } from './ui/panel';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
@@ -52,6 +54,8 @@ export class Game {
   private view: WorldView;
   private guestView: GuestView;
   private ferryView: FerryView;
+  private coinPops: CoinPops;
+  private panel: InfoPanel;
   private speed: Speed = 1;
   private tickAcc = 0;
   private sinceSave = 0;
@@ -86,6 +90,7 @@ export class Game {
     this.view = new WorldView(this.stage, this.world);
     this.guestView = new GuestView(this.stage, this.sim);
     this.ferryView = new FerryView(this.stage, this.sim);
+    this.coinPops = new CoinPops(this.stage);
     this.hud = new Hud(hudRoot, {
       onTrayDown: (item, e) => this.onTrayDown(item, e),
       onRotate: () => this.rotate(),
@@ -98,7 +103,9 @@ export class Game {
       onGuestDown: (id, e) => this.onGuestDown(id, e),
       onAutoAssign: () => this.autoAssign(),
     });
+    this.panel = new InfoPanel(hudRoot, this.sim);
     this.sim.on((e) => this.onSimEvent(e));
+    this.world.onMoney(() => this.onMoneyChange());
     this.stage.onFrame((dt) => this.frame(dt));
     this.setSpeed(1);
     this.world.onChange(() => this.onWorldChange());
@@ -132,11 +139,13 @@ export class Game {
     const alpha = this.speed > 0 ? this.tickAcc / TICK : 1;
     this.guestView.update(alpha, this.speed > 0 ? dt : 0);
     this.ferryView.update(this.speed > 0 ? dt : 0);
+    const popping = this.coinPops.update(dt * Math.max(this.speed, 1));
+    this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     const queue = this.sim.queue;
     this.hud.setQueue(queue);
     this.followQueue(queue.length);
-    return this.speed > 0;
+    return this.speed > 0 || popping;
   }
 
   private onSimEvent(e: SimEvent): void {
@@ -154,6 +163,12 @@ export class Game {
         if (now - this.gaveUpToast > 4000) this.hud.toast('A party gave up waiting and is heading home');
         this.gaveUpToast = now;
         return;
+      }
+      case 'purchase': {
+        const b = this.world.buildings.find((x) => x.id === e.buildingId);
+        if (!b) return;
+        const { w, h } = footprint(b.kind, b.rot);
+        return this.coinPops.spawn(b.x + w / 2, b.y + h / 2, e.amount);
       }
       case 'checkedIn':
         if (this.selectedGuest === e.guestId) this.selectNextGuest();
@@ -321,10 +336,16 @@ export class Game {
     this.onWorldChange();
   }
 
-  private onWorldChange(): void {
+  private onMoneyChange(): void {
     this.hud.setCoins(this.world.money);
     this.hud.setAffordable('path', this.world.money >= PATH_COST);
     for (const k of BUILDING_KINDS) this.hud.setAffordable(k, this.world.money >= BUILDINGS[k].cost);
+    // A ghost that just became affordable should turn green.
+    if (this.tool.type === 'build' && this.ghostAt) this.previewBuild(this.ghostAt);
+  }
+
+  private onWorldChange(): void {
+    this.onMoneyChange();
     // History commits after the edit that triggered this event, so read it next tick.
     queueMicrotask(() => this.hud.setUndo(this.history.canUndo));
     if (this.selectedGuest !== null) this.showRoomMarks();
@@ -420,28 +441,21 @@ export class Game {
     this.onWorldChange();
   }
 
+  /** A tap with no tool: pick a guest or building, or place the selected arrival. */
   private inspect(t: Tile, clientX: number, clientY: number): void {
-    const p = this.stage.groundAt(clientX, clientY);
-    const g = p && this.guestView.pick(p.x, p.z);
+    const g = this.guestView.pickScreen(clientX, clientY, this.stage.camera, this.stage.canvas);
     if (g && this.sim.queue.includes(g)) {
       this.setTab('guests');
       return this.selectGuest(g.id);
     }
-    if (g) {
-      const mood = g.satisfaction >= 70 ? 'happy' : g.satisfaction >= 45 ? 'content' : 'unhappy';
-      const stay = g.leaving ? 'heading home' : `${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} left`;
-      return this.hud.toast(`${GUEST_TYPES[g.type].name} · ${mood} · ${stay} · “${g.thought}”`, 'info');
-    }
     const b = this.world.buildingAt(t.x, t.y);
     if (this.selectedGuest !== null) {
       if (b && this.sim.isRoom(b)) return this.tryCheckIn(this.selectedGuest, b.id);
-      return this.selectGuest(null);
+      if (!g) return this.selectGuest(null);
     }
-    if (b && this.sim.isRoom(b)) {
-      const n = this.sim.occupancy(b.id);
-      return this.hud.toast(`${BUILDINGS[b.kind].name} · ${n} of 2 rooms taken · built on day ${b.builtDay}`, 'info');
-    }
-    if (b) this.hud.toast(`${BUILDINGS[b.kind].name} · built on day ${b.builtDay}`, 'info');
+    if (g) return this.panel.showGuest(g.id);
+    if (b) return this.panel.showBuilding(b.id);
+    this.panel.close();
   }
 
   // ---------- input ----------
@@ -512,6 +526,7 @@ export class Game {
       switch (e.key.toLowerCase()) {
         case 'escape':
           if (this.selectedGuest !== null) return this.selectGuest(null);
+          if (this.panel.open) return this.panel.close();
           return this.setTool({ type: 'none' });
         case 'g':
           return this.setTab(this.tab === 'guests' ? 'build' : 'guests');

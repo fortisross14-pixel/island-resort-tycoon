@@ -4,7 +4,7 @@ A premium mobile tycoon game: grow a tiny island into a five-star resort, check 
 hand, and watch them walk your paths and spend money.
 
 This repository holds the proof of concept. The plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
-**M1 (island and construction), M2 (clock, ferry and walkers) and M3 (check-in) are done.**
+**M1–M4 are done:** island and construction, clock and ferry, check-in, and needs and spending.
 Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/
 
 ![M3: dragging a backpacker onto a room shows the match score](docs/m3.png)
@@ -33,7 +33,7 @@ npm run build      # type-check and build to dist/
 | Pause / speed | ❚❚ 1× 2× 4× | `Space` pauses |
 | Check in a guest | **Guests** tab: drag a card onto a room, or tap a card then a room | same; `G` toggles the tab |
 
-Tap a guest or a building with no tool selected to see who or what it is.
+Tap a guest or a building with no tool selected to open its panel. A venue's panel sets its price.
 
 ## Layout
 
@@ -46,13 +46,16 @@ src/
     pathGraph.ts   cached walking distances over the footpaths
     sim.ts         clock, ferry, check-in queue and guest agents (fixed tick)
     match.ts       room match score: budget tier and wishes
+    needs.ts       meters, venues, price steps
     rng.ts         seeded RNG
   render/     Three.js
     stage.ts       renderer, ortho camera, picking, pan/zoom, render-on-demand
     models.ts      low-poly building, palm and path models
     worldView.ts   keeps the scene in sync with the World; ghosts and highlights
     guestView.ts   instanced guests and the ferry
-  ui/hud.ts   DOM overlay: top bar, build tray, toolbar, toasts
+    coinPops.ts    floating +N coins on purchases
+  ui/hud.ts   DOM overlay: top bar, build tray, guest cards, toasts
+  ui/panel.ts guest and building info panel
   game.ts     input handling and tools; glues sim, render and UI
 tests/        Vitest specs for the sim
 ```

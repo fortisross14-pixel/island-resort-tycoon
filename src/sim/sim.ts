@@ -1,12 +1,28 @@
 import { BUILDINGS } from './buildings';
 import { AUTO_PENALTY, accessOf, matchScore, type Match, type Wish } from './match';
-import { PathGraph } from './pathGraph';
+import {
+  DECAY,
+  DEFAULT_PRICE,
+  FAR_FACTOR,
+  FAR_TILES,
+  LINE_PATIENCE,
+  NAP_REST,
+  NEEDS,
+  STROLL_FUN,
+  VENUES,
+  buyChance,
+  lowestNeed,
+  priceOf,
+  type Meters,
+  type PriceStep,
+} from './needs';
+import { PathGraph, UNREACHABLE } from './pathGraph';
 import { Rng } from './rng';
 import type { Building, Tile, World } from './world';
 
 /**
- * The living resort: the day clock, the morning ferry, check-in (M3) and guests
- * walking the footpaths. Runs at a fixed tick, separate from drawing (GDD risk mitigation for
+ * The living resort: the day clock, the morning ferry, check-in (M3), and guests
+ * walking the footpaths to fill their needs and spend money (M4). Runs at a fixed tick, separate from drawing (GDD risk mitigation for
  * many guests on phones). Pure TypeScript, so it runs headless in tests.
  *
  * Time units: "sim seconds" drive movement (one real second at 1x speed);
@@ -43,6 +59,8 @@ export interface GuestTypeDef {
   nights: [number, number];
   /** Nightly budget in coins (charged in M5). */
   budget: [number, number];
+  /** Coins the whole party will spend on the island per day. */
+  spend: [number, number];
   /** Room tier their budget expects (1 = Basic Rooms). */
   tier: number;
   wishPool: Wish[];
@@ -55,6 +73,7 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     size: 1,
     nights: [1, 2],
     budget: [40, 70],
+    spend: [35, 60],
     tier: 1,
     wishPool: ['snacks', 'shortWalk'],
     wishCount: [1, 1],
@@ -64,6 +83,7 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     size: 2,
     nights: [2, 4],
     budget: [90, 140],
+    spend: [110, 170],
     tier: 2,
     wishPool: ['buffet', 'quiet', 'snacks'],
     wishCount: [1, 2],
@@ -86,8 +106,9 @@ export type Goal =
  * arriving: walking off the boat (to the queue, or to the island once checked in)
  * queued:   standing on the pier waiting for a room
  * waiting:  on the pier waiting for the ferry home
+ * inline:   standing in line outside a busy venue
  */
-export type GuestState = 'arriving' | 'queued' | 'walking' | 'inside' | 'waiting' | 'boarding' | 'gone';
+export type GuestState = 'arriving' | 'queued' | 'walking' | 'inline' | 'inside' | 'waiting' | 'boarding' | 'gone';
 
 /** One party: a backpacker, or a couple sharing a room. */
 export interface Guest {
@@ -101,6 +122,14 @@ export interface Guest {
   patience: number;
   /** 0–100; starts at the room match score. */
   satisfaction: number;
+  /** Room match score, which sets how comfortable a stay in the room is. */
+  roomScore: number;
+  needs: Meters;
+  /** Coins left to spend today, and spent so far today. */
+  wallet: number;
+  spentToday: number;
+  /** A venue they just declined (too pricey or too busy), skipped on the next choice. */
+  avoid: number | null;
   /** Building id of their room, or null when unhoused. */
   roomId: number | null;
   nightsLeft: number;
@@ -141,10 +170,24 @@ export interface DayStats {
   housed: number;
   turnedAway: number;
   departed: number;
+  /** Coins guests spent at venues today. */
+  spending: number;
+}
+
+/** Live state of a food venue (M4). */
+export interface Venue {
+  price: PriceStep;
+  serving: number;
+  line: number[];
+  visitsToday: number;
+  revenueToday: number;
+  /** Guests who arrived but didn't buy (too pricey, line too long). */
+  lostToday: number;
 }
 
 export interface SimSnapshot {
-  version: 2;
+  version: 3;
+  venues: Record<number, Venue>;
   minutes: number;
   rng: number;
   nextGuestId: number;
@@ -159,9 +202,10 @@ export type SimEvent =
   | { type: 'ferryLeft' }
   | { type: 'gaveUp'; guestId: number }
   | { type: 'checkedIn'; guestId: number; roomId: number; score: number; auto: boolean }
+  | { type: 'purchase'; guestId: number; buildingId: number; amount: number }
   | { type: 'newDay'; day: number; yesterday: DayStats };
 
-const emptyStats = (): DayStats => ({ arrived: 0, housed: 0, turnedAway: 0, departed: 0 });
+const emptyStats = (): DayStats => ({ arrived: 0, housed: 0, turnedAway: 0, departed: 0, spending: 0 });
 
 /** Parties arriving on a given day's ferry (first pass; M5 ties this to the star rating). */
 export function arrivalsForDay(day: number): number {
@@ -175,6 +219,8 @@ export class Sim {
   guests: Guest[] = [];
   ferry: Ferry = { phase: 'away', t: 0, toUnload: 0, unloadTimer: 0, cameToday: false };
   today: DayStats = emptyStats();
+  /** Food venue state by building id. */
+  venues: Record<number, Venue> = {};
   /** Front Desk behaviour: place arrivals automatically (scores AUTO_PENALTY lower). */
   autoCheckIn = false;
   readonly paths: PathGraph;
@@ -258,6 +304,20 @@ export class Sim {
     return this.isRoom(b) && this.occupancy(b.id) < ROOMS_PER_BUILDING;
   }
 
+  /** Venue state for a food building (created on first use). */
+  venue(id: number): Venue {
+    let v = this.venues[id];
+    if (!v) {
+      v = { price: DEFAULT_PRICE, serving: 0, line: [], visitsToday: 0, revenueToday: 0, lostToday: 0 };
+      this.venues[id] = v;
+    }
+    return v;
+  }
+
+  setPrice(id: number, step: PriceStep): void {
+    this.venue(id).price = step;
+  }
+
   match(g: Guest, room: Building): Match {
     return matchScore(this.paths, this.world, g, room);
   }
@@ -307,8 +367,21 @@ export class Sim {
     this.ferry.cameToday = false;
     this.today = emptyStats();
     this.guests = this.guests.filter((g) => g.state !== 'gone');
-    // Morning: everyone wakes up; guests whose stay is over check out.
+    for (const v of Object.values(this.venues)) {
+      v.visitsToday = 0;
+      v.revenueToday = 0;
+      v.lostToday = 0;
+    }
+    // Morning: everyone wakes up rested with a fresh day's spending money;
+    // guests whose stay is over check out.
     for (const g of this.guests) {
+      if (g.roomId !== null) {
+        g.needs.rest = 100;
+        g.needs.comfort = Math.max(g.needs.comfort, this.roomComfort(g));
+        g.needs.hunger = Math.max(0, g.needs.hunger - 25);
+        g.wallet = this.dailySpend(g);
+        g.spentToday = 0;
+      }
       if (g.nightsLeft <= 0 && g.roomId !== null) {
         g.leaving = true;
         g.roomId = null;
@@ -391,6 +464,16 @@ export class Sim {
       wishes,
       patience: PATIENCE_SECONDS,
       satisfaction: 50,
+      roomScore: 50,
+      needs: {
+        hunger: this.rng.range(45, 75),
+        fun: this.rng.range(50, 80),
+        rest: this.rng.range(55, 85),
+        comfort: this.rng.range(60, 85),
+      },
+      wallet: 0,
+      spentToday: 0,
+      avoid: null,
       roomId: null,
       nightsLeft: this.rng.int(lo, hi),
       leaving: false,
@@ -408,12 +491,27 @@ export class Sim {
       thought: 'Which room is ours?',
       look: Math.floor(this.rng.next() * 1000),
     };
+    g.wallet = this.dailySpend(g);
     this.guests.push(g);
     this.today.arrived++;
   }
 
+  private dailySpend(g: Guest): number {
+    return Math.round(this.rng.range(...GUEST_TYPES[g.type].spend));
+  }
+
+  /** How comfortable their room is, from its match score. */
+  private roomComfort(g: Guest): number {
+    return 40 + g.roomScore * 0.6;
+  }
+
   private stepGuest(g: Guest, dt: number): void {
+    this.stepNeeds(g, dt);
     switch (g.state) {
+      case 'inline':
+        g.timer -= dt;
+        if (g.timer <= 0) this.leaveLine(g);
+        return;
       case 'arriving':
       case 'walking':
       case 'boarding':
@@ -431,6 +529,17 @@ export class Sim {
       case 'gone':
         return;
     }
+  }
+
+  /** Meters run down while out on the island; satisfaction follows how they feel. */
+  private stepNeeds(g: Guest, dt: number): void {
+    if (g.roomId === null || g.leaving) return;
+    if (g.state === 'inside' && g.insideId === g.roomId) return;
+    if (g.state !== 'walking' && g.state !== 'inline' && g.state !== 'inside') return;
+    for (const n of NEEDS) g.needs[n] = Math.max(0, g.needs[n] - DECAY[n] * dt);
+    const low = g.needs[lowestNeed(g.needs)];
+    if (low < 25) g.satisfaction = Math.max(0, g.satisfaction - 0.25 * dt);
+    else if (low > 60) g.satisfaction = Math.min(100, g.satisfaction + 0.04 * dt);
   }
 
   /** Move along waypoints. Returns true on reaching the last one. */
@@ -481,21 +590,107 @@ export class Sim {
       g.state = 'waiting';
       return;
     }
-    if (goal.kind === 'tile') return this.decide(g);
+    if (goal.kind === 'tile') {
+      g.needs.fun = Math.min(100, g.needs.fun + STROLL_FUN);
+      g.thought = this.rng.pick(['What a lovely island.', 'Look at that water!', 'Nice little stroll.']);
+      return this.decide(g);
+    }
     const b = this.building(goal.id);
     if (!b) return this.decide(g);
+    if (goal.purpose === 'food') return this.arriveAtVenue(g, b);
     g.state = 'inside';
     g.insideId = b.id;
-    g.timer =
-      goal.purpose === 'food'
-        ? this.rng.range(3, 6)
-        : goal.purpose === 'room' && this.minutes >= EVENING
-          ? OVERNIGHT
-          : this.rng.range(8, 14);
-    g.thought = goal.purpose === 'food' ? `Lunch at the ${BUILDINGS[b.kind].name}.` : 'A little rest.';
+    g.timer = goal.purpose === 'room' && this.minutes >= EVENING ? OVERNIGHT : this.rng.range(8, 14);
+    g.thought = g.timer >= OVERNIGHT ? 'Good night!' : 'A little rest.';
+  }
+
+  // ---------- venues (M4) ----------
+
+  /** At a food venue: buy if the price suits them, then get served or join the line. */
+  private arriveAtVenue(g: Guest, b: Building): void {
+    const def = VENUES[b.kind];
+    if (!def) return this.decide(g);
+    const v = this.venue(b.id);
+    const price = priceOf(b.kind, v.price) * g.size;
+    const name = BUILDINGS[b.kind].name;
+    if (g.wallet < price) return this.walkAway(g, b, v, `Can’t afford the ${name}.`, 2);
+    if (this.rng.next() > buyChance(g.type, v.price)) return this.walkAway(g, b, v, `The ${name} is too pricey!`, 4);
+    if (v.serving < def.capacity) return this.serve(g, b, v);
+    if (v.line.length >= def.lineMax) return this.walkAway(g, b, v, `The line at the ${name} is huge!`, 4);
+    v.line.push(g.id);
+    g.state = 'inline';
+    g.insideId = b.id;
+    g.timer = LINE_PATIENCE;
+    g.thought = `Waiting in line at the ${name}.`;
+  }
+
+  private walkAway(g: Guest, b: Building, v: Venue, thought: string, penalty: number): void {
+    v.lostToday++;
+    g.satisfaction = Math.max(0, g.satisfaction - penalty);
+    g.thought = thought;
+    g.avoid = b.id;
+    this.decide(g);
+  }
+
+  private serve(g: Guest, b: Building, v: Venue): void {
+    const def = VENUES[b.kind]!;
+    const price = priceOf(b.kind, v.price) * g.size;
+    v.serving++;
+    v.visitsToday++;
+    v.revenueToday += price;
+    g.wallet -= price;
+    g.spentToday += price;
+    this.today.spending += price;
+    this.world.earn(price);
+    g.needs[def.need] = Math.min(100, g.needs[def.need] + def.gain);
+    for (const [n, add] of Object.entries(def.bonus ?? {})) {
+      const k = n as keyof Meters;
+      g.needs[k] = Math.min(100, g.needs[k] + (add ?? 0));
+    }
+    // A bargain pleases; a steep price stings a little even when they pay it.
+    g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + (v.price <= 2 ? 3 : -2)));
+    g.state = 'inside';
+    g.insideId = b.id;
+    g.timer = def.service * this.rng.range(0.85, 1.15);
+    g.avoid = null;
+    g.thought = v.price <= 1 ? `Great prices at the ${BUILDINGS[b.kind].name}!` : `Eating at the ${BUILDINGS[b.kind].name}.`;
+    this.emit({ type: 'purchase', guestId: g.id, buildingId: b.id, amount: price });
+  }
+
+  private leaveLine(g: Guest): void {
+    const b = g.insideId !== null ? this.building(g.insideId) : undefined;
+    if (b) {
+      const v = this.venue(b.id);
+      v.line = v.line.filter((id) => id !== g.id);
+      g.insideId = null;
+      return this.walkAway(g, b, v, 'I waited too long in that line.', 5);
+    }
+    g.insideId = null;
+    g.state = 'walking';
+    this.decide(g);
+  }
+
+  /** A seat came free: serve the next guest in line. */
+  private pullLine(b: Building): void {
+    const def = VENUES[b.kind];
+    if (!def) return;
+    const v = this.venue(b.id);
+    while (v.serving < def.capacity && v.line.length) {
+      const g = this.guest(v.line.shift()!);
+      if (g && g.state === 'inline') this.serve(g, b, v);
+    }
   }
 
   private exitBuilding(g: Guest): void {
+    const b = g.insideId !== null ? this.building(g.insideId) : undefined;
+    if (b && VENUES[b.kind]) {
+      const v = this.venue(b.id);
+      v.serving = Math.max(0, v.serving - 1);
+      this.pullLine(b);
+    } else if (b && b.id === g.roomId) {
+      g.needs.rest = Math.min(100, g.needs.rest + NAP_REST);
+      g.needs.comfort = Math.max(g.needs.comfort, this.roomComfort(g));
+    }
     g.insideId = null;
     g.state = 'walking';
     // They reappear at the path tile they went in from (g.tile is unchanged).
@@ -521,6 +716,7 @@ export class Sim {
     const score = Math.max(0, this.match(g, room).score - (auto ? AUTO_PENALTY : 0));
     g.roomId = room.id;
     g.satisfaction = score;
+    g.roomScore = score;
     g.thought = score >= 75 ? 'This is perfect!' : score >= 50 ? 'This will do.' : 'Hmm, not what we hoped for.';
     // Walk from wherever they stand on the pier onto the island.
     const d = this.world.dock;
@@ -568,7 +764,10 @@ export class Sim {
     this.emit({ type: 'gaveUp', guestId: g.id });
   }
 
-  /** Pick what to do next and plan the walk there. */
+  /**
+   * Pick what to do next: whatever best fills their emptiest meters, weighted by
+   * walking distance, the 12-tile rule, queues and prices.
+   */
   private decide(g: Guest): void {
     if (g.leaving) return this.plan(g, { kind: 'dock' });
     if (g.roomId === null || !this.building(g.roomId)) {
@@ -579,40 +778,76 @@ export class Sim {
     }
     if (this.minutes >= EVENING) return this.plan(g, { kind: 'building', id: g.roomId, purpose: 'room' });
 
-    const r = this.rng.next();
-    if (r < 0.55) {
-      const food = this.pickFood(g);
-      if (food) return this.plan(g, { kind: 'building', id: food.id, purpose: 'food' });
+    const options = this.options(g);
+    let best = options[0];
+    let bestU = -1;
+    for (const o of options) {
+      const u = o.utility * this.rng.range(0.75, 1.25);
+      if (u > bestU) {
+        bestU = u;
+        best = o;
+      }
     }
-    if (r < 0.8) {
-      const tiles = this.world.pathTiles();
-      return this.plan(g, { kind: 'tile', tile: this.rng.pick(tiles) });
-    }
-    return this.plan(g, { kind: 'building', id: g.roomId, purpose: 'rest' });
+    g.avoid = null;
+    if (best.goal.kind === 'building' && best.goal.purpose === 'food' && g.needs.hunger < 35)
+      g.thought = 'I’m starving!';
+    this.plan(g, best.goal);
   }
 
-  /** Food buildings weighted towards the closer ones (M4 replaces this with needs). */
-  private pickFood(g: Guest): Building | null {
-    if (!g.tile) return null;
-    const options: Array<{ b: Building; w: number }> = [];
+  /** Every choice a guest could make right now, with how much they'd like it. */
+  options(g: Guest): Array<{ goal: Goal; utility: number }> {
+    const out: Array<{ goal: Goal; utility: number }> = [];
+    const room = g.roomId !== null ? this.building(g.roomId) : undefined;
+    const from = g.tile;
+    const m = g.needs;
+
     for (const b of this.world.buildings) {
-      if (BUILDINGS[b.kind].family !== 'food') continue;
-      const d = this.paths.distance(`b${b.id}`, this.access(b), g.tile);
-      if (!Number.isFinite(d) || d >= 0x7fff) continue;
-      options.push({ b, w: 1 / (1 + d) });
+      const def = VENUES[b.kind];
+      if (!def || !from || b.id === g.avoid) continue;
+      const key = `b${b.id}`;
+      const goals = this.access(b);
+      const d = this.paths.distance(key, goals, from);
+      if (d >= UNREACHABLE) continue;
+      const v = this.venue(b.id);
+      const deficit = 100 - m[def.need];
+      let u = Math.min(def.gain, deficit) * (deficit > 30 ? 1 : 0.3);
+      u *= 1 / (1 + d / 8);
+      // The 12-tile rule is measured from their room's door.
+      if (room && this.roomDistance(room, key, goals) > FAR_TILES) u *= FAR_FACTOR;
+      u *= 1 / (1 + v.line.length / 2);
+      // Price isn't known until they get there (GDD); only an empty wallet keeps them away.
+      if (g.wallet < priceOf(b.kind, v.price) * g.size) u = 0;
+      out.push({ goal: { kind: 'building', id: b.id, purpose: 'food' }, utility: u });
     }
-    if (!options.length) return null;
-    let r = this.rng.next() * options.reduce((s, o) => s + o.w, 0);
-    for (const o of options) if ((r -= o.w) <= 0) return o.b;
-    return options[options.length - 1].b;
+
+    if (room) {
+      const deficit = 100 - m.rest + (100 - m.comfort) * 0.5;
+      const d = from ? this.paths.distance(`b${room.id}`, this.access(room), from) : 0;
+      out.push({ goal: { kind: 'building', id: room.id, purpose: 'rest' }, utility: (deficit * 0.6) / (1 + d / 10) });
+    }
+
+    const tiles = this.world.pathTiles();
+    out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.7 + 6 });
+    return out;
+  }
+
+  private roomDistance(room: Building, key: string, goals: Tile[]): number {
+    let best = UNREACHABLE;
+    for (const t of this.access(room)) best = Math.min(best, this.paths.distance(key, goals, t));
+    return best;
   }
 
   /** Turn a goal into waypoints from the guest's current tile. */
-  private plan(g: Guest, goal: Goal): void {
+  private plan(g: Guest, goal: Goal, retried = false): void {
+    // A stroll target that is no longer a path is simply forgotten.
+    if (goal.kind === 'tile' && !this.world.isPath(goal.tile.x, goal.tile.y)) {
+      if (retried) goal = { kind: 'dock' };
+      else return this.decide(g);
+    }
     g.goal = goal;
     g.state = 'walking';
     const from = g.tile && this.world.isPath(g.tile.x, g.tile.y) ? g.tile : null;
-    if (!from) return this.teleportToDock(g, goal);
+    if (!from) return retried ? this.strand(g) : this.teleportToDock(g, goal);
 
     let key: string;
     let goals: Tile[];
@@ -631,7 +866,7 @@ export class Sim {
     }
 
     const route = this.paths.route(key, goals, from);
-    if (!route) return this.teleportToDock(g, goal);
+    if (!route) return retried ? this.strand(g) : this.teleportToDock(g, goal);
     const pts: Point[] = [{ x: from.x + 0.5, z: from.y + 0.5 }, ...route.map((t) => ({ x: t.x + 0.5, z: t.y + 0.5 }))];
     const end = route.length ? route[route.length - 1] : from;
     if (b) pts.push(this.doorPoint(b, end));
@@ -646,13 +881,16 @@ export class Sim {
     g.tile = { ...d };
     g.x = g.px = d.x + 0.5;
     g.z = g.pz = d.y + 0.5;
-    if (goal.kind === 'dock' || !this.paths.route('dock', [d], d)) {
-      g.goal = { kind: 'dock' };
-      g.waypoints = [...this.pierWalk(true).slice(0, 2), this.waitingSpot()];
-      g.wp = 0;
-      return;
-    }
-    this.plan(g, goal);
+    if (goal.kind === 'dock') return this.strand(g);
+    this.plan(g, goal, true);
+  }
+
+  /** Last resort: walk out along the pier and wait there. */
+  private strand(g: Guest): void {
+    g.goal = { kind: 'dock' };
+    g.state = 'walking';
+    g.waypoints = [...this.pierWalk(true).slice(0, 2), this.waitingSpot()];
+    g.wp = 0;
   }
 
   /** A point just inside the building's edge next to the access tile. */
@@ -673,7 +911,14 @@ export class Sim {
   /** After the map changes: fix guests whose room, target or path disappeared, and re-route walkers. */
   private reconcile(): void {
     this.stale = false;
+    for (const id of Object.keys(this.venues).map(Number)) if (!this.building(id)) delete this.venues[id];
     for (const g of this.guests) {
+      if (g.state === 'inline' && (g.insideId === null || !this.building(g.insideId))) {
+        g.insideId = null;
+        g.state = 'walking';
+        this.decide(g);
+        continue;
+      }
       if (g.roomId !== null && !this.building(g.roomId)) {
         g.roomId = null;
         if (!g.leaving) {
@@ -700,7 +945,8 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 2,
+      version: 3,
+      venues: structuredClone(this.venues),
       minutes: this.minutes,
       rng: this.rng.state,
       nextGuestId: this.nextGuestId,
@@ -711,7 +957,8 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 2) throw new Error('Incompatible save');
+    if (s.version !== 3) throw new Error('Incompatible save');
+    this.venues = structuredClone(s.venues);
     this.minutes = s.minutes;
     this.rng.state = s.rng;
     this.nextGuestId = s.nextGuestId;
@@ -724,7 +971,8 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 2,
+      version: 3,
+      venues: {},
       minutes: DAY_START,
       rng: 0x1234abcd,
       nextGuestId: 1,

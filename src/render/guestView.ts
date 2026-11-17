@@ -65,9 +65,7 @@ export class GuestView {
     this.ring.visible = false;
     for (const g of this.sim.guests) {
       if (!isVisible(g) || i >= MAX_GUESTS * 2 - 1) continue;
-      // A small per-guest offset so groups don't stand inside each other.
-      const ox = (((g.look * 37) % 100) / 100 - 0.5) * 0.36;
-      const oz = (((g.look * 61) % 100) / 100 - 0.5) * 0.36;
+      const [ox, oz] = offset(g);
       const x = g.px + (g.x - g.px) * alpha + ox;
       const z = g.pz + (g.z - g.pz) * alpha + oz;
       const moving = isMoving(g);
@@ -97,13 +95,19 @@ export class GuestView {
     }
   }
 
-  /** Guest nearest a ground point, within reach (for tap-to-inspect). */
-  pick(x: number, z: number, reach = 0.35): Guest | null {
+  /** Guest drawn nearest a screen point, within reach in CSS pixels (for tap-to-inspect). */
+  pickScreen(clientX: number, clientY: number, camera: THREE.Camera, canvas: HTMLCanvasElement, reach = 26): Guest | null {
+    const rect = canvas.getBoundingClientRect();
     let best: Guest | null = null;
     let bestD = reach;
     for (const g of this.sim.guests) {
       if (!isVisible(g)) continue;
-      const d = Math.hypot(g.x - x, g.z - z);
+      const [ox, oz] = offset(g);
+      // Aim at the middle of the figure (or between the two people of a couple).
+      this.p.set(g.x + ox + (g.size - 1) * 0.1, 0.28, g.z + oz + (g.size - 1) * 0.06).project(camera);
+      const sx = rect.left + ((this.p.x + 1) / 2) * rect.width;
+      const sy = rect.top + ((1 - this.p.y) / 2) * rect.height;
+      const d = Math.hypot(sx - clientX, sy - clientY);
       if (d < bestD) {
         bestD = d;
         best = g;
@@ -111,6 +115,11 @@ export class GuestView {
     }
     return best;
   }
+}
+
+/** A small per-guest offset so groups don't stand inside each other. */
+function offset(g: Guest): [number, number] {
+  return [(((g.look * 37) % 100) / 100 - 0.5) * 0.36, (((g.look * 61) % 100) / 100 - 0.5) * 0.36];
 }
 
 /** The ferry: sails in from the open sea to the pier and back out. */

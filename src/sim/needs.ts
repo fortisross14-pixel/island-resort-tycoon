@@ -1,0 +1,89 @@
+import type { BuildingKind } from './buildings';
+
+/**
+ * Needs, venues and prices (M4). GDD: "Each guest tracks four meters: Hunger, Fun,
+ * Rest and Comfort. They walk to whatever building satisfies their lowest meter best,
+ * weighted by walking distance and their own taste. Price, queue length and quality
+ * decide whether they buy once they get there."
+ *
+ * Meters run 0–100 where 100 means fully satisfied.
+ */
+
+export type Need = 'hunger' | 'fun' | 'rest' | 'comfort';
+export const NEEDS: Need[] = ['hunger', 'fun', 'rest', 'comfort'];
+export const NEED_LABELS: Record<Need, string> = { hunger: 'Hunger', fun: 'Fun', rest: 'Rest', comfort: 'Comfort' };
+
+export type Meters = Record<Need, number>;
+
+/** Meter loss per sim second while out and about (a day is 200 s). */
+export const DECAY: Meters = { hunger: 0.55, fun: 0.45, rest: 0.3, comfort: 0.22 };
+
+/** Fun gained from a stroll to somewhere new on the island. */
+export const STROLL_FUN = 22;
+/** Rest gained from a nap in the room during the day. */
+export const NAP_REST = 45;
+
+/**
+ * GDD 12-tile rule: "A building more than 12 path tiles from a guest's room loses
+ * most of their visits."
+ */
+export const FAR_TILES = 12;
+export const FAR_FACTOR = 0.15;
+
+export interface VenueDef {
+  need: Need;
+  /** Meter points one visit gives. */
+  gain: number;
+  /** Guests served at the same time. */
+  capacity: number;
+  /** Sim seconds a visit takes. */
+  service: number;
+  /** Longest line guests will join. */
+  lineMax: number;
+  /** Price per person at the "Fair" step. */
+  basePrice: number;
+  /** Secondary meter bonus, e.g. a snack is a bit of fun. */
+  bonus?: Partial<Meters>;
+}
+
+export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
+  snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 10, bonus: { fun: 5 } },
+  buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 25, bonus: { comfort: 5 } },
+};
+
+/** Sim seconds a guest will stand in a line before walking off. */
+export const LINE_PATIENCE = 10;
+
+export type PriceStep = 0 | 1 | 2 | 3 | 4;
+export const PRICE_STEPS: { label: string; mult: number }[] = [
+  { label: 'Bargain', mult: 0.6 },
+  { label: 'Low', mult: 0.8 },
+  { label: 'Fair', mult: 1 },
+  { label: 'High', mult: 1.3 },
+  { label: 'Luxury', mult: 1.7 },
+];
+export const DEFAULT_PRICE: PriceStep = 2;
+
+export function priceOf(kind: BuildingKind, step: PriceStep): number {
+  const v = VENUES[kind];
+  return v ? Math.round(v.basePrice * PRICE_STEPS[step].mult) : 0;
+}
+
+/** Price multiple a guest type accepts without hesitation. */
+export const PRICE_TOLERANCE: Record<'backpacker' | 'couple', number> = { backpacker: 0.8, couple: 1.1 };
+
+/** Chance a guest buys at a price step, before checking their wallet. */
+export function buyChance(type: 'backpacker' | 'couple', step: PriceStep): number {
+  const over = Math.max(0, PRICE_STEPS[step].mult - PRICE_TOLERANCE[type]);
+  return Math.max(0.05, Math.min(0.97, 0.95 - over * 1.5));
+}
+
+export function fullMeters(): Meters {
+  return { hunger: 100, fun: 100, rest: 100, comfort: 100 };
+}
+
+export function lowestNeed(m: Meters): Need {
+  let best: Need = 'hunger';
+  for (const n of NEEDS) if (m[n] < m[best]) best = n;
+  return best;
+}

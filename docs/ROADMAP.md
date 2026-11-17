@@ -6,18 +6,23 @@ This is the plan for the **Prototype** milestone in the Game Design Document (ab
 > drag-to-room check-in, guests walking and spending, and the night report.
 > **The question it answers: is placing guests and watching them spend fun for 15 minutes?**
 
-The prototype is split into six milestones. Each one ends with something you can play. The
-simulation (`src/sim`) stays pure TypeScript with no DOM or Three.js, so every rule can be
-unit tested and a playtest harness can drive it headless in M6.
+The prototype is split into five milestones, then three passes. Each milestone ends with
+something you can play. The simulation (`src/sim`) stays pure TypeScript with no DOM or
+Three.js, so every rule can be unit tested and a playtest harness can drive it headless.
+
+Until the passes, testing covers rules and function only: balance numbers and visual polish
+are deliberately left rough.
 
 | # | Milestone | Status |
 |---|-----------|--------|
 | M1 | Island and construction | **Done** |
 | M2 | Clock, ferry and walkers | **Done** |
 | M3 | Check-in | **Done** |
-| M4 | Needs and spending | Next |
-| M5 | Economy, night report and reviews | Planned |
-| M6 | Playtest build | Planned |
+| M4 | Needs and spending | **Done** |
+| M5 | Economy, night report and reviews | Next |
+| Pass 1 | Depth and scenarios | Planned |
+| Pass 2 | Balance | Planned |
+| Pass 3 | Graphics, visuals and GUI | Planned |
 
 ---
 
@@ -85,17 +90,23 @@ Goal: the player's main action.
 Couples expect a tier-2 room, so they always lose a few points in Basic Rooms until Standard
 Rooms arrive in the vertical slice. That is deliberate: it shows the tier system working.
 
-## M4 — Needs and spending
+## M4 — Needs and spending ✅
 
 Goal: money you can see.
 
-- Four meters per guest: Hunger, Fun, Rest and Comfort, decaying over the day
-- Guests walk to whichever building best fills their lowest meter, weighted by walking distance
-- The 12-tile rule: buildings more than 12 path tiles from a guest's room lose most of their visits
-- Snack Bar and Buffet capacity, queues and service time
-- One price slider per building with 5 steps (Bargain to Luxury), with a live visit estimate
-- A coin pops above the building on every purchase
-- Tap a guest to see their meters, wallet, current thought and today's spending
+- [x] Four meters per guest (Hunger, Fun, Rest, Comfort), 0–100, running down while they're out
+- [x] Guests choose whatever best fills their emptiest meters: venues for hunger, strolls for fun, naps in the room for rest and comfort
+- [x] Choices weigh walking distance and line length; the 12-tile rule cuts a venue's appeal to 15% when it's more than 12 path tiles from the guest's room
+- [x] Venues have capacity, service time and a line (Snack Bar 2 at a time, line of 4; Buffet 8, line of 6); guests in a long line give up
+- [x] Price steps per venue (Bargain, Low, Fair, High, Luxury); price is discovered on arrival, as in the GDD, and decides whether they buy
+- [x] Backpackers are more price-sensitive than couples; each party has a daily spending wallet
+- [x] Every sale goes into your coins, with a "+N" coin popping over the venue
+- [x] Tap a guest: thought, mood, the four meters, wallet, today's spending, room match and stay
+- [x] Tap a venue: price buttons with the live buy chance per guest type, sales, revenue, walk-aways, serving and line
+- [x] Tap a room: occupancy and each party's mood
+- [x] Satisfaction now moves: empty meters drain it, bargains lift it, lines and high prices dent it
+
+Not yet: Fun and Comfort have no venues of their own (the pool, gift shop and spa come in Pass 1).
 
 ## M5 — Economy, night report and reviews
 
@@ -108,13 +119,18 @@ Goal: one full day loop with consequences.
 - Star rating from the rolling review average, which drives the next ferry's size
 - Balance check against the GDD targets: profitable by day 2, buildings pay back in 4–8 days when well placed
 
-## M6 — Playtest build
+## Pass 1 — Depth and scenarios
 
-Goal: answer the prototype's question with real players.
+More to build and more reasons to build it: further buildings and guest types from the GDD,
+land plots, stacked floors, research and scenario goals. Scope to be set after M5.
 
-- Headless playtest harness: run N days with a scripted layout and log the economy
-- Balance pass on the numbers from M1–M5
-- First-time hints for the first day
-- PWA manifest and offline caching; installable on phones
-- Performance pass on a low-end phone
-- A 15-minute playtest script and feedback form
+## Pass 2 — Balance
+
+A headless playtest harness that runs many days with scripted layouts and logs the economy,
+then tuning against the GDD targets (profitable by day 2, payback in 4–8 days when placed well,
+spending overtaking room income by mid-game).
+
+## Pass 3 — Graphics, visuals and GUI
+
+Art, animation, day and night lighting, UI layout on phones, onboarding hints, PWA install and
+a performance pass on low-end phones.

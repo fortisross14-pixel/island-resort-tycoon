@@ -66,6 +66,7 @@ export class World {
   private occ: Int32Array;
   private buildingsById = new Map<number, Building>();
   private listeners = new Set<() => void>();
+  private moneyListeners = new Set<() => void>();
 
   constructor(size = 10, money = START_MONEY) {
     this.size = size;
@@ -289,6 +290,20 @@ export class World {
     const w = new World(s.size, s.money);
     w.restore(s);
     return w;
+  }
+
+  /**
+   * Income or running costs. Unlike construction, this doesn't change the map, so it
+   * only notifies money listeners (guests don't need to re-route on every sale).
+   */
+  earn(amount: number): void {
+    this.money += amount;
+    for (const fn of this.moneyListeners) fn();
+  }
+
+  onMoney(fn: () => void): () => void {
+    this.moneyListeners.add(fn);
+    return () => this.moneyListeners.delete(fn);
   }
 
   // ---------- change events ----------
