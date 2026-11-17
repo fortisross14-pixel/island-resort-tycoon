@@ -1,5 +1,8 @@
 import './style.css';
 import { Game } from './game';
+import { watchInstall } from './ui/install';
+
+watchInstall();
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene')!;
 const hud = document.querySelector<HTMLElement>('#hud')!;

@@ -3,9 +3,10 @@ import { FIRST_XP, REPEAT_XP, type Profile } from '../sim/profile';
 import { BRANCHES, GATE_COUNT, NODES } from '../sim/research';
 import { ARCHIPELAGOS, pointsToOpen } from '../sim/archipelago';
 import { BUILDINGS } from '../sim/buildings';
-import { MEDALS, MEDAL_NAMES, SCENARIOS, type ScenarioDef } from '../sim/scenario';
+import { MEDALS, MEDAL_NAMES, SCENARIOS } from '../sim/scenario';
 import { duration } from '../sim/calendar';
 import type { NewGameChoice } from './goals';
+import { INSTALL_STEPS, installWay, onInstallChange, promptInstall } from './install';
 
 const MEDAL_ICON = { bronze: '🥉', silver: '🥈', gold: '🥇' } as const;
 
@@ -57,12 +58,6 @@ function minimap(def: IslandDef): string {
   return c.toDataURL();
 }
 
-function goalsHtml(def: ScenarioDef): string {
-  return MEDALS.map(
-    (t) => `<li><span>${MEDAL_ICON[t]}</span><span>${def.medals[t].map((g) => g.label).join(' · ')}</span></li>`,
-  ).join('');
-}
-
 export interface HomeHandlers {
   onPlay(choice: NewGameChoice): void;
   onContinue(): void;
@@ -75,10 +70,16 @@ export interface HomeHandlers {
  */
 export class HomeScreen {
   private el: HTMLElement;
+  /** The mission sheet lives beside the home screen: its blur would trap a fixed overlay. */
+  private sheet: HTMLElement;
   private view: 'islands' | 'research' = 'islands';
   private island = ISLANDS[0].id;
   private canContinue = false;
   private maps = new Map<string, string>();
+  /** The mission whose details are open, or null. */
+  private detail: string | null = null;
+  /** Install steps open (browsers without a prompt). */
+  private howToInstall = false;
 
   constructor(
     root: HTMLElement,
@@ -90,8 +91,31 @@ export class HomeScreen {
     this.el.className = 'home';
     this.el.hidden = true;
     root.appendChild(this.el);
-    this.el.addEventListener('click', (e) => {
+    this.sheet = document.createElement('div');
+    this.sheet.className = 'home-sheet';
+    root.appendChild(this.sheet);
+    onInstallChange(() => this.refresh());
+    const onClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
+      if (t.closest('[data-install]')) {
+        if (installWay() === 'prompt') void promptInstall().then(() => this.render());
+        else {
+          this.howToInstall = true;
+          this.render();
+        }
+        return;
+      }
+      // Close a detail sheet: its ✕, or a tap on the backdrop around it.
+      if (t.closest('[data-close-sheet]') || t.classList.contains('m-backdrop')) {
+        this.detail = null;
+        this.howToInstall = false;
+        return this.render();
+      }
+      const card = t.closest<HTMLElement>('[data-mission]');
+      if (card) {
+        this.detail = card.dataset.mission!;
+        return this.render();
+      }
       const v = t.closest<HTMLElement>('[data-view]');
       if (v) {
         this.view = v.dataset.view as 'islands' | 'research';
@@ -100,15 +124,18 @@ export class HomeScreen {
       const isl = t.closest<HTMLElement>('[data-island]');
       if (isl) {
         this.island = isl.dataset.island!;
+        this.detail = null;
         return this.render();
       }
       const play = t.closest<HTMLElement>('[data-play-mission]');
       if (play) {
-        const guide = this.el.querySelector<HTMLInputElement>('[data-tutorial]');
+        const guide = this.sheet.querySelector<HTMLInputElement>('[data-tutorial]');
+        this.detail = null;
         this.hide();
         return this.h.onPlay({ scenario: play.dataset.playMission!, tutorial: !!guide?.checked });
       }
       if (t.closest('[data-sandbox]')) {
+        this.detail = null;
         this.hide();
         return this.h.onPlay({ sandbox: true });
       }
@@ -121,7 +148,9 @@ export class HomeScreen {
         this.h.onBuy(buy.dataset.buy!);
         return this.render();
       }
-    });
+    };
+    this.el.addEventListener('click', onClick);
+    this.sheet.addEventListener('click', onClick);
   }
 
   get open(): boolean {
@@ -141,6 +170,12 @@ export class HomeScreen {
 
   /** Esc: back to the resort, if there is one. */
   cancel(): boolean {
+    if (!this.el.hidden && (this.detail || this.howToInstall)) {
+      this.detail = null;
+      this.howToInstall = false;
+      this.render();
+      return true;
+    }
     if (this.el.hidden || !this.canContinue) return false;
     this.hide();
     this.h.onContinue();
@@ -149,6 +184,7 @@ export class HomeScreen {
 
   hide(): void {
     this.el.hidden = true;
+    this.sheet.innerHTML = '';
   }
 
   refresh(): void {
@@ -160,7 +196,7 @@ export class HomeScreen {
     const cur = this.canContinue ? this.current() : null;
     const head = `<header class="home-head">
         <div><small>Island Resort Tycoon</small><h1>The Archipelago</h1></div>
-        <div class="xp" title="Experience: spend it on research">⭐ <b>${p.xp}</b> XP</div>
+        <div class="head-right">${installWay() === 'installed' ? '' : '<button class="install" data-install aria-label="Install the game" title="Install the game">⤓<span> Install</span></button>'}<div class="xp" title="Experience: spend it on research">⭐ <b>${p.xp}</b> XP</div></div>
       </header>
       <nav class="home-tabs" role="tablist">
         <button role="tab" data-view="islands" class="${this.view === 'islands' ? 'on' : ''}">Islands</button>
@@ -168,6 +204,7 @@ export class HomeScreen {
       </nav>
       ${cur ? `<button class="continue" data-continue>▸ Continue <b>${cur.name}</b> <span>${cur.when}</span></button>` : ''}`;
     this.el.innerHTML = `<div class="home-inner">${head}${this.view === 'islands' ? this.islandsHtml() : this.researchHtml()}</div>`;
+    this.sheet.innerHTML = this.sheetHtml();
   }
 
   private islandsHtml(): string {
@@ -193,34 +230,72 @@ export class HomeScreen {
     const missions = SCENARIOS.filter((s) => s.island === def.id)
       .map((m) => {
         const st = p.missionState(m);
-        const won = MEDALS.map((t) => `<span class="m ${p.hasMedal(m.id, t) ? 'won' : ''}" title="${MEDAL_NAMES[t]}: ${p.hasMedal(m.id, t) ? `${REPEAT_XP[t]} XP again` : `${FIRST_XP[t]} XP the first time`}">${MEDAL_ICON[t]}</span>`).join('');
-        const extras = [
-          m.kit?.length ? `Includes: ${m.kit.map((k) => BUILDINGS[k].name).join(', ')}` : '',
-          m.needsResearch?.length ? `Needs research: ${m.needsResearch.map((id) => NODES.find((n) => n.id === id)?.name ?? id).join(', ')}` : '',
-          m.prebuilt ? 'Starts with an old resort' : '',
-        ].filter(Boolean);
-        return `<article class="mission ${st.open ? '' : 'locked'}">
-          <header><b>${m.name} <em class="lvl ${m.level}">${LEVELS[m.level]}</em></b><span class="medals">${won}</span></header>
-          ${extras.length ? `<p class="extras">${extras.join(' · ')}</p>` : ''}
-          <p>${m.blurb}</p>
-          <ul class="goals">${goalsHtml(m)}</ul>
-          <footer><small>${duration(m.days)} · ${m.startMoney.toLocaleString('en-US')} coins</small>${
-            st.open ? `<button class="go" data-play-mission="${m.id}">Play</button>` : `<span class="lock">🔒 ${st.reason}</span>`
-          }</footer>
-        </article>`;
+        const best = p.best(m.id);
+        return `<button class="mission ${st.open ? '' : 'locked'}" data-mission="${m.id}">
+          <span class="m-top"><b>${m.name}</b><span class="medals">${this.medalRow(m.id)}</span></span>
+          <span class="m-sub"><em class="lvl ${m.level}">${LEVELS[m.level]}</em>${
+            st.open ? `<span>${best ? `Best: ${MEDAL_NAMES[best]}` : duration(m.days)}</span>` : '<span class="lock">🔒 Locked</span>'
+          }<i class="chev" aria-hidden="true">›</i></span>
+        </button>`;
       })
       .join('');
     const sandbox = p.sandboxOpen
-      ? `<article class="mission sandbox"><header><b>Sandbox</b></header><p>Every building unlocked, 50,000 coins, no goals, on Twin Palms.</p><footer><span></span><button class="go" data-sandbox>Play</button></footer></article>`
-      : `<article class="mission sandbox locked"><header><b>Sandbox</b></header><p>Every building, no goals.</p><footer><span class="lock">🔒 A medal on both beginner missions</span></footer></article>`;
+      ? `<button class="mission sandbox" data-sandbox><span class="m-top"><b>Sandbox</b></span><span class="m-sub"><span>Every building, 50,000 coins, no goals</span><i class="chev" aria-hidden="true">›</i></span></button>`
+      : `<div class="mission sandbox locked"><span class="m-top"><b>Sandbox</b></span><span class="m-sub"><span class="lock">🔒 A medal on both beginner missions</span></span></div>`;
     const islandLock = p.islandOpen(def.id) ? '' : `<p class="lock-note">🔒 Opens at ${pointsToOpen(def.id)} points in ${arch.name} (you have ${points})</p>`;
     return `${archHead}<div class="sea-map">${isles}</div>${next}
       <section class="island-card">
         <h2>${def.name} <small>${def.scale} island</small></h2>${islandLock}
         <p class="muted">${def.blurb}</p>
-        <label class="guide"><input type="checkbox" data-tutorial ${this.guide ? 'checked' : ''} /> Guide me through the first day</label>
         <div class="missions">${missions}${def.id === 'coconutKey' ? sandbox : ''}</div>
       </section>`;
+  }
+
+  private medalRow(id: string): string {
+    const p = this.profile;
+    return MEDALS.map((t) => `<span class="m ${p.hasMedal(id, t) ? 'won' : ''}" title="${MEDAL_NAMES[t]}">${MEDAL_ICON[t]}</span>`).join('');
+  }
+
+  /** The mission's full card (or the install steps), over the home screen. */
+  private sheetHtml(): string {
+    if (this.howToInstall) {
+      const way = installWay();
+      const steps = INSTALL_STEPS[way === 'ios' ? 'ios' : 'manual'];
+      return `<div class="m-backdrop"><section class="m-sheet" role="dialog" aria-label="Install the game">
+        <button class="x" data-close-sheet aria-label="Close">✕</button>
+        <h2>Install the game</h2>
+        <p class="muted">Play from your home screen, full screen and offline.</p>
+        <ol class="steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+      </section></div>`;
+    }
+    const m = this.detail ? SCENARIOS.find((x) => x.id === this.detail) : undefined;
+    if (!m) return '';
+    const p = this.profile;
+    const st = p.missionState(m);
+    const extras = [
+      m.kit?.length ? `Includes ${m.kit.map((k) => BUILDINGS[k].name).join(', ')}` : '',
+      m.needsResearch?.length ? `Needs ${m.needsResearch.map((id) => NODES.find((n) => n.id === id)?.name ?? id).join(', ')}` : '',
+      m.prebuilt ? 'Starts with an old resort' : '',
+    ].filter(Boolean);
+    const goals = MEDALS.map((t) => {
+      const won = p.hasMedal(m.id, t);
+      const xp = won ? `${REPEAT_XP[t]} XP again` : `${FIRST_XP[t]} XP`;
+      return `<li class="${won ? 'won' : ''}"><span class="mi">${MEDAL_ICON[t]}</span><span>${m.medals[t].map((g) => g.label).join('<br>')}</span><small>${won ? '✓ ' : ''}${xp}</small></li>`;
+    }).join('');
+    return `<div class="m-backdrop"><section class="m-sheet" role="dialog" aria-label="${m.name}">
+      <button class="x" data-close-sheet aria-label="Close">✕</button>
+      <h2>${m.name}</h2>
+      <p class="m-meta"><em class="lvl ${m.level}">${LEVELS[m.level]}</em><span>${islandDef(m.island).name}</span><span>${duration(m.days)}</span><span>${m.startMoney.toLocaleString('en-US')} coins</span></p>
+      <p>${m.blurb}</p>
+      ${extras.length ? `<p class="chips">${extras.map((x) => `<span>${x}</span>`).join('')}</p>` : ''}
+      <ul class="goals">${goals}</ul>
+      ${
+        st.open
+          ? `<label class="guide"><input type="checkbox" data-tutorial ${this.guide ? 'checked' : ''} /> Guide me through the first day</label>
+             <button class="go" data-play-mission="${m.id}">Play</button>`
+          : `<p class="lock">🔒 ${st.reason}</p>`
+      }
+    </section></div>`;
   }
 
   private researchHtml(): string {
