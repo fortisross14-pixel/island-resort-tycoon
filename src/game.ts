@@ -115,7 +115,16 @@ export class Game {
       onAutoAssign: () => this.autoAssign(),
       onResearch: (id) => this.research(id),
     });
-    this.panel = new InfoPanel(hudRoot, this.sim);
+    this.panel = new InfoPanel(hudRoot, this.sim, {
+      addFloor: (id) => {
+        const r = this.history.run(() => this.world.addFloor(id, this.sim.maxFloors));
+        this.hud.toast(r.ok ? 'New floor: 2 more rooms' : r.reason, r.ok ? 'good' : 'bad');
+      },
+      addElevator: (id) => {
+        const r = this.history.run(() => this.world.addElevator(id));
+        this.hud.toast(r.ok ? 'Elevator installed' : r.reason, r.ok ? 'good' : 'bad');
+      },
+    });
     this.sim.pauseAtNight = true;
     this.report = new NightReportView(hudRoot, {
       onStartDay: () => this.startDay(),
@@ -316,10 +325,10 @@ export class Game {
     for (const b of this.world.buildings) {
       if (!this.sim.isRoom(b)) continue;
       const tiles = this.world.footprintTiles(b.kind, b.x, b.y, b.rot);
-      if (!this.sim.hasVacancy(b)) marks.push({ id: b.id, tiles, tone: 'info', label: 'Full' });
+      if (!this.sim.hasVacancy(b)) marks.push({ id: b.id, tiles, tone: 'info', label: 'Full', floors: b.floors });
       else {
         const { score } = this.sim.match(g, b);
-        marks.push({ id: b.id, tiles, tone: this.markTone(score), label: String(score) });
+        marks.push({ id: b.id, tiles, tone: this.markTone(score), label: String(score), floors: b.floors });
       }
     }
     this.view.showRoomMarks(marks);

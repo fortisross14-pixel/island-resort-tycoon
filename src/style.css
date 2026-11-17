@@ -556,3 +556,11 @@ button:disabled { cursor: default; opacity: 0.45; }
 .report .cancel { display: block; margin: 10px auto 0; background: transparent; color: var(--ink-soft); font-weight: 700; text-decoration: underline; }
 .certificate { text-align: center; }
 .certificate .lines { justify-items: center; }
+
+/* ---------- floors (Pass 1) ---------- */
+.floor-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.floor-actions button { padding: 6px 10px; border-radius: 999px; background: #fff; border: 1px solid var(--panel-edge); font-size: 12px; font-weight: 800; display: flex; gap: 4px; align-items: center; }
+.floor-actions button span { display: flex; align-items: center; gap: 3px; color: var(--ink-soft); }
+.floor-actions button.urgent { background: var(--bad); color: #fff; border-color: var(--bad); }
+.floor-actions button.urgent span { color: #fff; }
+.estimate.warn { color: var(--bad); }

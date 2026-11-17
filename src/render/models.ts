@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BuildingKind } from '../sim/buildings';
+import { BUILDINGS, type BuildingKind } from '../sim/buildings';
 
 /**
  * Low-poly, flat-shaded models built from primitives (GDD art direction: warm tropical
@@ -433,6 +433,43 @@ const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
 
 export function buildingModel(kind: BuildingKind): THREE.Group {
   return BUILDERS[kind]();
+}
+
+/** Height of one stacked floor. */
+const FLOOR_H = 0.62;
+
+/**
+ * A room building with extra floors: plain storeys with windows underneath the
+ * original model (which keeps its roof on top), plus a glass elevator shaft.
+ */
+export function stackedModel(kind: BuildingKind, floors: number, elevator: boolean): THREE.Group {
+  const top = buildingModel(kind);
+  if (floors <= 1 && !elevator) return top;
+  const g = new THREE.Group();
+  const { w, h } = BUILDINGS[kind];
+  const extra = floors - 1;
+  const fw = w * 0.8;
+  const fd = h * 0.68;
+  const wall = kind === 'basicRooms' ? PALETTE.wall : kind === 'standardRooms' ? PALETTE.wallWarm : PALETTE.wood;
+  for (let f = 0; f < extra; f++) {
+    const y = 0.08 + f * FLOOR_H;
+    g.add(box(fw, FLOOR_H, fd, wall, 0, y, -0.05));
+    g.add(box(fw + 0.06, 0.05, fd + 0.06, PALETTE.white, 0, y + FLOOR_H - 0.05, -0.05));
+    const n = Math.max(2, Math.round(fw / 0.45));
+    for (let i = 0; i < n; i++) g.add(windowPane(-fw / 2 + (i + 0.5) * (fw / n), y + FLOOR_H / 2, fd / 2 - 0.05 + 0.001, 0.2, 0.22));
+  }
+  top.position.y = extra * FLOOR_H;
+  g.add(top);
+  if (elevator) {
+    const shaft = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, floors * FLOOR_H + 0.4, 0.28),
+      new THREE.MeshLambertMaterial({ color: '#9fd8ee', transparent: true, opacity: 0.75 }),
+    );
+    shaft.position.set(fw / 2 + 0.12, (floors * FLOOR_H + 0.4) / 2, fd / 2 - 0.2);
+    shaft.castShadow = true;
+    g.add(shaft);
+  }
+  return g;
 }
 
 export function palm(height = 1.2, lean = 0.2): THREE.Group {

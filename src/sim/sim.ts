@@ -23,8 +23,8 @@ import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './r
 import { rating, reviewText, starsFor, type Memory, type Review } from './reviews';
 import { Campaign, type CampaignState } from './scenario';
 import { Rng } from './rng';
-import type { Building, Result, Tile, World } from './world';
-import type { BuildingKind } from './buildings';
+import { floorsOf, type Building, type Result, type Tile, type World } from './world';
+import { ELEVATOR_ABOVE, MAX_FLOORS_EARLY, MAX_FLOORS_RESEARCHED, ROOMS_PER_FLOOR, type BuildingKind } from './buildings';
 
 /**
  * The living resort: the day clock, the morning ferry, check-in (M3), and guests
@@ -524,7 +524,22 @@ export class Sim {
   }
 
   hasVacancy(b: Building): boolean {
-    return this.isRoom(b) && this.occupancy(b.id) < ROOMS_PER_BUILDING;
+    return this.isRoom(b) && this.occupancy(b.id) < this.capacity(b);
+  }
+
+  /** Rooms in a room building: two per floor. */
+  capacity(b: Building): number {
+    return this.isRoom(b) ? ROOMS_PER_FLOOR * floorsOf(b) : 0;
+  }
+
+  /** Floors a room building may have, which research raises. */
+  get maxFloors(): number {
+    return !this.progression || this.research.done.has('tallBuildings') ? MAX_FLOORS_RESEARCHED : MAX_FLOORS_EARLY;
+  }
+
+  /** A tall building without an elevator: guests resent the stairs. */
+  needsElevator(b: Building): boolean {
+    return floorsOf(b) > ELEVATOR_ABOVE && !b.elevator;
   }
 
   /** Venue state for a food building (created on first use). */
@@ -566,7 +581,12 @@ export class Sim {
   }
 
   match(g: Guest, room: Building): Match {
-    return matchScore(this.paths, this.world, g, room, this.roomRate(room));
+    const m = matchScore(this.paths, this.world, g, room, this.roomRate(room));
+    if (this.needsElevator(room)) {
+      m.score = Math.max(0, m.score - 15);
+      m.notes.push({ ok: false, text: 'So many stairs!' });
+    }
+    return m;
   }
 
   occupancy(roomId: number): number {
@@ -643,12 +663,14 @@ export class Sim {
     }
     for (const l of roomLines.values()) {
       const n = this.occupancy(l.buildingId!);
-      l.detail = `${n} of ${ROOMS_PER_BUILDING} rooms`;
+      const b = this.building(l.buildingId!)!;
+      l.detail = `${n} of ${this.capacity(b)} rooms`;
     }
 
     const costs: NightLine[] = [];
     for (const b of this.world.buildings) {
-      const up = BUILDINGS[b.kind].upkeep;
+      // Each extra floor adds upkeep at the building's rate.
+      const up = BUILDINGS[b.kind].upkeep * floorsOf(b) + (b.elevator ? 20 : 0);
       this.world.earn(-up);
       t.upkeep += up;
     }

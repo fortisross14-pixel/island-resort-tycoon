@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { footprint, type BuildingKind, type Rotation } from '../sim/buildings';
 import type { Tile, World } from '../sim/world';
-import { PALETTE, buildingModel, mat, palm, pathTile } from './models';
+import { PALETTE, buildingModel, mat, palm, pathTile, stackedModel } from './models';
 import type { Stage } from './stage';
 
 export type HighlightTone = 'ok' | 'warn' | 'bad' | 'info';
@@ -14,6 +14,8 @@ export interface RoomMark {
   tiles: Tile[];
   tone: HighlightTone;
   label: string;
+  /** Floors, so the bubble clears a tall building's roof. */
+  floors?: number;
 }
 
 /** Keeps the Three.js scene in sync with the World and draws build previews. */
@@ -258,7 +260,8 @@ export class WorldView {
       p.position.set(t.x + 0.5, 0, t.y + 0.5);
       this.pathsGroup.add(p);
     }
-    for (const b of w.buildings) this.buildingsGroup.add(placeModel(buildingModel(b.kind), b.kind, b.x, b.y, b.rot));
+    for (const b of w.buildings)
+      this.buildingsGroup.add(placeModel(stackedModel(b.kind, b.floors ?? 1, !!b.elevator), b.kind, b.x, b.y, b.rot));
     this.stage.requestRender();
   }
 
@@ -298,7 +301,7 @@ export class WorldView {
       plate.renderOrder = 2;
       this.marksGroup.add(plate);
       const sprite = labelSprite(mk.label, TONES[mk.tone]);
-      sprite.position.set(x0 + w / 2, 2.0, y0 + h / 2);
+      sprite.position.set(x0 + w / 2, 2.0 + ((mk.floors ?? 1) - 1) * 0.62, y0 + h / 2);
       this.marksGroup.add(sprite);
       this.marks.set(mk.id, sprite);
     }

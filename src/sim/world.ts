@@ -1,6 +1,8 @@
 import {
   BUILDINGS,
   DEMOLISH_REFUND,
+  ELEVATOR_COST,
+  floorCost,
   PATH_COST,
   START_MONEY,
   footprint,
@@ -81,6 +83,18 @@ export interface Building {
   y: number;
   rot: Rotation;
   builtDay: number;
+  /** Room buildings can be stacked (Pass 1); 1 when absent. */
+  floors?: number;
+  elevator?: boolean;
+}
+
+export function floorsOf(b: Building): number {
+  return b.floors ?? 1;
+}
+
+/** Everything spent on a building: its price, extra floors and an elevator. */
+export function investedIn(b: Building): number {
+  return BUILDINGS[b.kind].cost + (floorsOf(b) - 1) * floorCost(b.kind) + (b.elevator ? ELEVATOR_COST : 0);
 }
 
 export interface Tile {
@@ -300,7 +314,41 @@ export class World {
     if (!b) return fail('No building there');
     for (const t of this.footprintTiles(b.kind, b.x, b.y, b.rot)) this.occ[this.idx(t.x, t.y)] = 0;
     this.buildingsById.delete(id);
-    this.money += Math.floor(BUILDINGS[b.kind].cost * DEMOLISH_REFUND);
+    this.money += Math.floor(investedIn(b) * DEMOLISH_REFUND);
+    this.emit();
+    return OK;
+  }
+
+  // ---------- floors (Pass 1) ----------
+
+  /** Add a floor to a room building, up to `maxFloors` (set by research). */
+  canAddFloor(id: number, maxFloors: number): Result {
+    const b = this.buildingsById.get(id);
+    if (!b) return fail('No building there');
+    if (BUILDINGS[b.kind].family !== 'rooms') return fail('Only rooms can be stacked');
+    if (floorsOf(b) >= maxFloors) return fail(`${maxFloors} floors is the limit for now`);
+    if (this.money < floorCost(b.kind)) return fail('Not enough coins');
+    return OK;
+  }
+
+  addFloor(id: number, maxFloors: number): Result {
+    const check = this.canAddFloor(id, maxFloors);
+    if (!check.ok) return check;
+    const b = this.buildingsById.get(id)!;
+    this.money -= floorCost(b.kind);
+    b.floors = floorsOf(b) + 1;
+    this.emit();
+    return OK;
+  }
+
+  addElevator(id: number): Result {
+    const b = this.buildingsById.get(id);
+    if (!b) return fail('No building there');
+    if (BUILDINGS[b.kind].family !== 'rooms') return fail('Only rooms get elevators');
+    if (b.elevator) return fail('It already has one');
+    if (this.money < ELEVATOR_COST) return fail('Not enough coins');
+    this.money -= ELEVATOR_COST;
+    b.elevator = true;
     this.emit();
     return OK;
   }

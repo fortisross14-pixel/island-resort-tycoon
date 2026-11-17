@@ -20,8 +20,8 @@ are deliberately left rough.
 | M3 | Check-in | **Done** |
 | M4 | Needs and spending | **Done** |
 | M5 | Economy, night report and reviews | **Done** |
-| Pass 1 | Depth and scenarios | Next |
-| Pass 2 | Balance | Planned |
+| Pass 1 | Depth and scenarios | **Done** |
+| Pass 2 | Balance | Next |
 | Pass 3 | Graphics, visuals and GUI | Planned |
 
 ---
@@ -124,7 +124,7 @@ Goal: one full day loop with consequences.
 - [x] Saves keep reviews, room rates and a pending night report
 - [x] Money can go negative (shown in red); the GDD's investor rescue belongs to Pass 1
 
-## Pass 1 — Depth and scenarios (in progress)
+## Pass 1 — Depth and scenarios ✅
 
 More to build and more reasons to build it. The full building plan is in
 [CATALOGUE.md](CATALOGUE.md): every building has an unlock tier and a separate quality class.
@@ -134,7 +134,9 @@ More to build and more reasons to build it. The full building plan is in
 3. ✅ **Research and unlocks.** Research points from review stars and Research Offices; a Research tab with topics in four branches; tier-1 buildings locked until researched; tier 2 needs two tier-1 topics and premium topics a ★3 rating. Tier 2 added: Garden Bungalows, Italian/Seafood/Asian restaurants, Gym, Spa, Boutique, Dive Shop.
 4. ✅ **Scenarios, goals and the investor rescue.** New-game dialog (Driftwood Beginnings or Sandbox). Scenario 1 has 30 days and three medal tiers (guests served, rating, research, 7-day profit), a goals pill and panel, and a certificate at the end. Three daily goals pay coins or research. After three days in the red, an investor offers cash for 15% of income for 20 days.
 5. ✅ **More guest types.** Families (★2, parties of 3–4), Wellness seekers (★3), Party groups (★3, out late) and VIPs (★4, hate crowds), each with loves and dislikes; Kids' Club (tier 2, per child) and Nightclub (tier 3, keeps neighbours awake). Fixed a long-standing bug where guests who went to bed before 23:00 slept through the next day.
-6. ⏳ **Stacked floors** for room buildings, with an Elevator above 3 floors.
+6. ✅ **Stacked floors.** Room buildings get floors from their panel (2 rooms each, 60% of the price, upkeep per floor): 3 at first, 6 after the Tall Buildings research. Above 3 floors guests mind the stairs (−15 match) until a 2,000 Elevator goes in. Demolishing refunds half of everything spent.
+
+Pass 1 is done. Left for later depth: tier 3–4 content (Suites, Water Villas, Fine Dining, Movie Theater, Conference Hall, Helipad, Marina), scenarios 2–8, rival resorts and rankings, staff, decoration and utilities, special plot types (beach, cliff, jungle).
 
 ## Pass 2 — Balance
 

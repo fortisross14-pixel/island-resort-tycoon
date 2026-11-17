@@ -1,7 +1,7 @@
-import { BUILDINGS } from '../sim/buildings';
+import { BUILDINGS, ELEVATOR_ABOVE, ELEVATOR_COST, floorCost } from '../sim/buildings';
 import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, roomRateOf, type PriceStep } from '../sim/needs';
-import { GUEST_TYPES, ROOMS_PER_BUILDING, type Guest, type Sim } from '../sim/sim';
-import type { Building } from '../sim/world';
+import { GUEST_TYPES, type Guest, type Sim } from '../sim/sim';
+import { floorsOf, type Building } from '../sim/world';
 
 type Subject = { kind: 'guest'; id: number } | { kind: 'building'; id: number } | null;
 
@@ -33,6 +33,7 @@ export class InfoPanel {
   constructor(
     root: HTMLElement,
     private sim: Sim,
+    private actions: { addFloor(id: number): void; addElevator(id: number): void },
   ) {
     this.el = document.createElement('aside');
     this.el.className = 'panel';
@@ -48,6 +49,8 @@ export class InfoPanel {
       if (price) this.sim.setPrice(this.subject.id, Number(price.dataset.price) as PriceStep);
       const rate = t.closest<HTMLButtonElement>('[data-rate]');
       if (rate) this.sim.setRoomRate(Number(rate.dataset.tier), Number(rate.dataset.rate) as PriceStep);
+      if (t.closest('[data-floor]')) this.actions.addFloor(this.subject.id);
+      if (t.closest('[data-elevator]')) this.actions.addElevator(this.subject.id);
       this.render();
     });
     root.appendChild(this.el);
@@ -156,9 +159,23 @@ export class InfoPanel {
       <p class="estimate">Nightly rate for every tier ${tier} room. Backpackers budget about 40–70, couples 90–140.</p>
       <dl>
         <dt>Tonight</dt><dd>${coin}${lodgers.filter((g) => !g.leaving).reduce((sum, g) => sum + Math.min(this.sim.roomRate(b), g.budget), 0)} expected</dd>
-        <dt>Rooms</dt><dd>${lodgers.length} of ${ROOMS_PER_BUILDING} taken</dd>
+        <dt>Rooms</dt><dd>${lodgers.length} of ${this.sim.capacity(b)} taken</dd>
+        <dt>Floors</dt><dd>${floorsOf(b)} of ${this.sim.maxFloors}${b.elevator ? ' · elevator' : ''}</dd>
         <dt>Built</dt><dd>Day ${b.builtDay}</dd>
       </dl>
+      <div class="floor-actions">
+        ${
+          floorsOf(b) < this.sim.maxFloors
+            ? `<button data-floor>+ Add floor <span>${coin}${floorCost(b.kind).toLocaleString('en-US')}</span></button>`
+            : `<small class="muted">${this.sim.maxFloors < 6 ? 'Research Tall Buildings for more floors' : 'As tall as it gets'}</small>`
+        }
+        ${
+          !b.elevator && floorsOf(b) >= ELEVATOR_ABOVE
+            ? `<button data-elevator class="${this.sim.needsElevator(b) ? 'urgent' : ''}">Elevator <span>${coin}${ELEVATOR_COST.toLocaleString('en-US')}</span></button>`
+            : ''
+        }
+      </div>
+      ${this.sim.needsElevator(b) ? '<p class="estimate warn">Guests hate climbing past 3 floors: add an elevator.</p>' : ''}
       <ul class="lodgers">${rows}</ul>`;
   }
 }

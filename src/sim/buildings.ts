@@ -282,6 +282,23 @@ export const BUILDING_KINDS = Object.keys(BUILDINGS) as BuildingKind[];
 
 export const PATH_COST = 10;
 
+// ---------- floors (Pass 1) ----------
+
+/** Rooms per floor of a room building (GDD "Basic Rooms (2 per floor)"). */
+export const ROOMS_PER_FLOOR = 2;
+/** An extra floor costs this share of the building's price. */
+export const FLOOR_COST_SHARE = 0.6;
+/** Floors allowed before research, and after Tall Buildings (GDD: 3 early on, 6 after research). */
+export const MAX_FLOORS_EARLY = 3;
+export const MAX_FLOORS_RESEARCHED = 6;
+/** Above this many floors, guests need an Elevator (GDD). */
+export const ELEVATOR_ABOVE = 3;
+export const ELEVATOR_COST = 2000;
+
+export function floorCost(kind: BuildingKind): number {
+  return Math.round((BUILDINGS[kind].cost * FLOOR_COST_SHARE) / 50) * 50;
+}
+
 /** Demolishing refunds this share of the build cost (GDD: 50%). */
 export const DEMOLISH_REFUND = 0.5;
 

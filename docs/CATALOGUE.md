@@ -16,7 +16,7 @@ Points: 1 per review star, plus 4 a night per Research Office. A topic is bought
 | Tier | Hospitality | Dining | Leisure | Operations |
 |---|---|---|---|---|
 | 1 | Standard Rooms (6) | Beach Bar (5) | Pool (7), Gift Shop (4) | Front Desk (5) |
-| 2 | Garden Bungalows (15, ★3) | Themed Restaurants (15, ★3) | Gym (10), Spa (16, ★3), Boutique (12, ★3), Kids' Club (10) | Dive Shop (14, ★3) |
+| 2 | Garden Bungalows (15, ★3), Tall Buildings (12: 6 floors) | Themed Restaurants (15, ★3) | Gym (10), Spa (16, ★3), Boutique (12, ★3), Kids' Club (10) | Dive Shop (14, ★3) |
 | 3 | — | — | Nightclub (25, ★3) | — |
 | 3–4 | Suites, Water Villas | Fine Dining | Movie Theater, Nightclub, Marina | Conference Hall, Helipad |
 
