@@ -1,23 +1,28 @@
 import { ISLANDS, islandDef, type IslandDef } from '../sim/islands';
 import { FIRST_XP, REPEAT_XP, type Profile } from '../sim/profile';
-import { BRANCHES, GATE_COUNT } from '../sim/research';
+import { BRANCHES, GATE_COUNT, NODES } from '../sim/research';
+import { ARCHIPELAGOS, pointsToOpen } from '../sim/archipelago';
+import { BUILDINGS } from '../sim/buildings';
 import { MEDALS, MEDAL_NAMES, SCENARIOS, type ScenarioDef } from '../sim/scenario';
 import { duration } from '../sim/calendar';
 import type { NewGameChoice } from './goals';
 
 const MEDAL_ICON = { bronze: '🥉', silver: '🥈', gold: '🥇' } as const;
 
-/** Islands still to come (Pass 4 step 5), shown as silhouettes on the map. */
-const SOON = [
-  { name: 'Old Harbour', x: 13, y: 20 },
-  { name: 'Far Sands', x: 87, y: 72 },
-  { name: 'Emerald Reef', x: 86, y: 20 },
+/** Archipelagos still to come, each with its own islands, decor and activities. */
+const NEXT = [
+  { name: 'Hawaii', theme: 'Volcanoes and land excursions' },
+  { name: 'The Balearics', theme: 'Nightlife' },
+  { name: 'Thailand', theme: 'Coming later' },
 ];
 /** Where each island sits on the archipelago map (percent of the map). */
 const PLACES: Record<string, { x: number; y: number; w: number }> = {
-  coconutKey: { x: 20, y: 64, w: 26 },
-  twinPalms: { x: 52, y: 46, w: 34 },
+  coconutKey: { x: 16, y: 66, w: 22 },
+  twinPalms: { x: 45, y: 40, w: 28 },
+  farSands: { x: 77, y: 66, w: 32 },
+  oldHarbour: { x: 82, y: 24, w: 24 },
 };
+const LEVELS = { beginner: 'Beginner', intermediate: 'Intermediate', advanced: 'Advanced' } as const;
 
 const TERRAIN_COLORS: Record<string, string> = {
   '~': 'rgba(0,0,0,0)',
@@ -167,25 +172,36 @@ export class HomeScreen {
 
   private islandsHtml(): string {
     const p = this.profile;
-    const isles = ISLANDS.map((d) => {
+    const arch = ARCHIPELAGOS[0];
+    const points = p.points(arch.id);
+    const maxPoints = SCENARIOS.filter((m) => arch.islands.some((i) => i.island === m.island)).length * 3;
+    const isles = ISLANDS.filter((d) => arch.islands.some((i) => i.island === d.id)).map((d) => {
       const at = PLACES[d.id] ?? { x: 50, y: 50, w: 28 };
       if (!this.maps.has(d.id)) this.maps.set(d.id, minimap(d));
       const missions = SCENARIOS.filter((s) => s.island === d.id);
       const medals = missions.map((m) => p.best(m.id)).filter(Boolean).length;
-      const open = missions.some((m) => p.missionState(m).open);
+      const open = p.islandOpen(d.id);
+      const tag = open ? `${medals}/${missions.length} 🏅` : `🔒 ${pointsToOpen(d.id)} pts`;
       return `<button class="isle ${this.island === d.id ? 'on' : ''} ${open ? '' : 'locked'}" data-island="${d.id}" style="left:${at.x}%;top:${at.y}%;width:${at.w}%">
         <img src="${this.maps.get(d.id)}" alt="" />
-        <span><b>${d.name}</b> ${medals}/${missions.length} 🏅</span>
+        <span><b>${d.name}</b> ${tag}</span>
       </button>`;
     }).join('');
-    const soon = SOON.map((s) => `<div class="isle soon" style="left:${s.x}%;top:${s.y}%"><span>${s.name}<small>coming soon</small></span></div>`).join('');
+    const archHead = `<div class="arch-head"><div><b class="an">${arch.name}</b><small>${arch.theme}</small></div><div class="points" title="Bronze 1, silver 2, gold 3: your best medal on each mission">🏅 <span class="n">${points}</span> / ${maxPoints} points</div></div>`;
+    const next = `<div class="next-arch">${NEXT.map((a) => `<span><b>${a.name}</b><small>${a.theme}</small></span>`).join('')}</div>`;
     const def = islandDef(this.island);
     const missions = SCENARIOS.filter((s) => s.island === def.id)
       .map((m) => {
         const st = p.missionState(m);
         const won = MEDALS.map((t) => `<span class="m ${p.hasMedal(m.id, t) ? 'won' : ''}" title="${MEDAL_NAMES[t]}: ${p.hasMedal(m.id, t) ? `${REPEAT_XP[t]} XP again` : `${FIRST_XP[t]} XP the first time`}">${MEDAL_ICON[t]}</span>`).join('');
+        const extras = [
+          m.kit?.length ? `Includes: ${m.kit.map((k) => BUILDINGS[k].name).join(', ')}` : '',
+          m.needsResearch?.length ? `Needs research: ${m.needsResearch.map((id) => NODES.find((n) => n.id === id)?.name ?? id).join(', ')}` : '',
+          m.prebuilt ? 'Starts with an old resort' : '',
+        ].filter(Boolean);
         return `<article class="mission ${st.open ? '' : 'locked'}">
-          <header><b>${m.name}</b><span class="medals">${won}</span></header>
+          <header><b>${m.name} <em class="lvl ${m.level}">${LEVELS[m.level]}</em></b><span class="medals">${won}</span></header>
+          ${extras.length ? `<p class="extras">${extras.join(' · ')}</p>` : ''}
           <p>${m.blurb}</p>
           <ul class="goals">${goalsHtml(m)}</ul>
           <footer><small>${duration(m.days)} · ${m.startMoney.toLocaleString('en-US')} coins</small>${
@@ -196,13 +212,14 @@ export class HomeScreen {
       .join('');
     const sandbox = p.sandboxOpen
       ? `<article class="mission sandbox"><header><b>Sandbox</b></header><p>Every building unlocked, 50,000 coins, no goals, on Twin Palms.</p><footer><span></span><button class="go" data-sandbox>Play</button></footer></article>`
-      : `<article class="mission sandbox locked"><header><b>Sandbox</b></header><p>Every building, no goals.</p><footer><span class="lock">🔒 Bronze on two missions</span></footer></article>`;
-    return `<div class="sea-map">${soon}${isles}</div>
+      : `<article class="mission sandbox locked"><header><b>Sandbox</b></header><p>Every building, no goals.</p><footer><span class="lock">🔒 A medal on both beginner missions</span></footer></article>`;
+    const islandLock = p.islandOpen(def.id) ? '' : `<p class="lock-note">🔒 Opens at ${pointsToOpen(def.id)} points in ${arch.name} (you have ${points})</p>`;
+    return `${archHead}<div class="sea-map">${isles}</div>${next}
       <section class="island-card">
-        <h2>${def.name} <small>${def.scale} island</small></h2>
+        <h2>${def.name} <small>${def.scale} island</small></h2>${islandLock}
         <p class="muted">${def.blurb}</p>
         <label class="guide"><input type="checkbox" data-tutorial ${this.guide ? 'checked' : ''} /> Guide me through the first day</label>
-        <div class="missions">${missions}${def.id === 'twinPalms' ? sandbox : ''}</div>
+        <div class="missions">${missions}${def.id === 'coconutKey' ? sandbox : ''}</div>
       </section>`;
   }
 

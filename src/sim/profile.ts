@@ -1,5 +1,6 @@
 import { NODES, Research, type NodeStatus, type ResearchNode } from './research';
-import { MEDALS, SCENARIOS, type MedalTier, type ScenarioDef } from './scenario';
+import { MEDALS, MEDAL_POINTS, SCENARIOS, type MedalTier, type ScenarioDef } from './scenario';
+import { ARCHIPELAGOS, archipelagoOf, pointsToOpen } from './archipelago';
 
 /**
  * The player's profile (Pass 4 step 4): what carries over between missions. Experience comes
@@ -13,8 +14,8 @@ export const FIRST_XP: Record<MedalTier, number> = { bronze: 30, silver: 50, gol
 export const REPEAT_XP: Record<MedalTier, number> = { bronze: 5, silver: 8, gold: 12 };
 /** Finishing a mission pays a little for the final rating (2 per tenth of a star above 2). */
 export const FINISH_XP_PER_STAR = 20;
-/** Bronze on this many different missions opens the sandbox. */
-export const SANDBOX_AFTER = 2;
+/** The sandbox opens once every mission on the first island has a medal. */
+export const SANDBOX_ISLAND_DONE = 'coconutKey';
 
 export interface ProfileData {
   version: 1;
@@ -101,13 +102,36 @@ export class Profile {
     return xp;
   }
 
-  /** Missions open like a roadmap: open from the start, or after any one listed medal. */
+  /** Points in an archipelago: the best medal on each of its missions. */
+  points(archipelago: string): number {
+    const a = ARCHIPELAGOS.find((x) => x.id === archipelago);
+    if (!a) return 0;
+    const isles = new Set(a.islands.map((i) => i.island));
+    return SCENARIOS.filter((s) => isles.has(s.island)).reduce((n, s) => {
+      const b = this.best(s.id);
+      return n + (b ? MEDAL_POINTS[b] : 0);
+    }, 0);
+  }
+
+  /** An island opens at a points total in its archipelago. */
+  islandOpen(island: string): boolean {
+    const a = archipelagoOf(island);
+    return !a || this.points(a.id) >= pointsToOpen(island);
+  }
+
+  /** A mission is open when its island is, and its research is done. */
   missionState(def: ScenarioDef): MissionState {
-    const req = def.requires ?? [];
-    if (!req.length || req.some((r) => this.medalAtLeast(r.mission, r.medal))) return { open: true };
-    const r = req[0];
-    const other = SCENARIOS.find((s) => s.id === r.mission);
-    return { open: false, reason: `${cap(r.medal)} on ${other?.name ?? r.mission}` };
+    const a = archipelagoOf(def.island);
+    if (a && !this.islandOpen(def.island)) {
+      const need = pointsToOpen(def.island);
+      return { open: false, reason: `${need} points in ${a.name} (you have ${this.points(a.id)})` };
+    }
+    const missing = (def.needsResearch ?? []).filter((id) => !this.research.done.has(id));
+    if (missing.length) {
+      const names = missing.map((id) => NODES.find((n) => n.id === id)?.name ?? id);
+      return { open: false, reason: `Research ${names.join(' and ')} first` };
+    }
+    return { open: true };
   }
 
   /** True if the best medal won on a mission is this tier or better. */
@@ -117,7 +141,7 @@ export class Profile {
   }
 
   get sandboxOpen(): boolean {
-    return Object.values(this.medals).filter((m) => m.length > 0).length >= SANDBOX_AFTER;
+    return SCENARIOS.filter((s) => s.island === SANDBOX_ISLAND_DONE).every((s) => this.best(s.id) !== null);
   }
 
   /** Research on the home screen: tier gates still apply; resort ratings don't. */
@@ -132,8 +156,4 @@ export class Profile {
   get nodes(): Array<{ node: ResearchNode; status: NodeStatus }> {
     return NODES.map((node) => ({ node, status: this.researchStatus(node) }));
   }
-}
-
-function cap(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }

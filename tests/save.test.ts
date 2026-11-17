@@ -27,7 +27,8 @@ describe('saves', () => {
     expect(r.ok && r.migrated).toBe(false);
     const { world, sim } = play(fixture('save-v8.json'));
     expect(world.buildings.length).toBeGreaterThan(0);
-    expect(sim.campaign).not.toBeNull();
+    // Its mission (Driftwood Beginnings) was retired: the resort carries on in free play.
+    expect(sim.campaign).toBeNull();
     expect(sim.dayPlan).toHaveLength(1);
   });
 

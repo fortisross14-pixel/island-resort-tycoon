@@ -215,8 +215,9 @@ campaign map with shared research ties the missions together.
   of clear goals.
 - **Experience** carries between missions. A first bronze, first silver and first gold on a
   mission each pay a large amount; repeating a medal you already hold pays a little.
-- **Unlocks** work like a roadmap: a few missions are always open, and gold medals open more.
-  The sandbox opens after the beginner missions.
+- **Unlocks** work by points: the best medal on each mission is worth 1 (bronze), 2 (silver) or
+  3 (gold), and islands open at point totals within their archipelago. The sandbox opens after
+  the beginner missions.
 - **Research** lives on the home screen and applies to every resort; it is bought with
   experience.
 
@@ -260,26 +261,16 @@ campaign map with shared research ties the missions together.
    their medal goals, a Continue button), XP from medals (first bronze 30, silver 50, gold 80;
    repeats 5, 8, 12; a little more for the final rating), research bought with XP on the home
    screen and shared by every resort (reviews no longer earn research; daily objectives always
-   pay coins; a Research Office adds 2 XP a month), a profile save of its own, missions that
-   open after a listed medal, and the sandbox after bronze on two missions. New missions: A
-   Little Profit (Coconut Key) and Lagoon Days (Twin Palms). Driftwood's silver now asks for 6
-   rooms instead of 6 research topics.
-5. **Islands and missions.** Old Harbour (a run-down resort to renovate), Far Sands (a great
-   beach far from the dock: beach club, boardwalk, shuttle) and Emerald Reef (jungle and reef,
-   the advanced missions), each with two to four missions, balanced with the playtest harness
-   so beginner golds are easy, the middle needs replays and research, and advanced bronzes are
-   a real challenge.
+   pay coins; a Research Office adds 2 XP a month), and a profile save of its own. (Step 5 replaced its
+   first unlock rules and missions with the archipelago structure below.)
+5. ✅ **The Caribbean.** Nine missions on four islands (Coconut Key, Twin Palms, Far Sands,
+   Old Harbour), points from medals (bronze 1, silver 2, gold 3) open the islands, gold
+   deadlines, mission kits, missions that need research first, and an old resort to renovate.
+   Balanced with the playtest bot (beginner silver easy, gold needs speed; intermediate needs
+   quality or activities; advanced bronze is a challenge). See [MISSIONS.md](MISSIONS.md).
+6. **More archipelagos.** Hawaii (volcanoes and land excursions), the Balearics (nightlife),
+   Thailand: new islands, decor sets and activities, same mission process.
 
-### Planned missions
+### Missions
 
-| Island | Mission | Goals (bronze → gold raise the bar) |
-|---|---|---|
-| Coconut Key | First Guests | 3 rooms and Lodging ★X by the end of year 3 |
-| Coconut Key | Little Profit | A profitable year with 6 rooms |
-| Twin Palms | Lagoon Days | Activities ★Y (kayaks, yoga) |
-| Twin Palms | Family Cove | Families hosted, a Kids' Club, rating and profit |
-| Old Harbour | New Paint | Lodging from ★1.5 to ★3.5: research, demolish, rebuild, wait for reviews |
-| Far Sands | The Long Beach | A beach club, boardwalk and shuttle so the beach counts |
-| Far Sands | Picture Perfect | Decoration ★4 |
-| Emerald Reef | Into the Blue | Activities ★4.5 with sea and jungle excursions |
-| Emerald Reef | Five-Star Island | ★4 in every rating |
+The Caribbean's nine missions, their goals and how they unlock are in [MISSIONS.md](MISSIONS.md).

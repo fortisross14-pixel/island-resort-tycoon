@@ -10,7 +10,7 @@ import { NightReportView } from './ui/report';
 import { GoalsView, certificateHtml, type NewGameChoice } from './ui/goals';
 import { HomeScreen } from './ui/home';
 import { Profile, type ProfileData } from './sim/profile';
-import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
+import { MEDAL_NAMES, SCENARIOS, applyPrebuilt } from './sim/scenario';
 import { islandLayout } from './sim/islands';
 
 /** The sandbox is played on the biggest island so far. */
@@ -729,7 +729,9 @@ export class Game {
   private startNewGame(choice: NewGameChoice): void {
     const scenario = 'scenario' in choice ? SCENARIOS.find((x) => x.id === choice.scenario) : undefined;
     const island = scenario ? scenario.island : SANDBOX_ISLAND;
-    this.world.restore(World.onIsland(islandLayout(island), scenario ? scenario.startMoney : 50000).snapshot());
+    const fresh = World.onIsland(islandLayout(island), scenario ? scenario.startMoney : 50000);
+    if (scenario?.prebuilt) applyPrebuilt(fresh, scenario.prebuilt);
+    this.world.restore(fresh.snapshot());
     this.view.frameStart();
     this.sim.reset();
     this.sim.progression = !!scenario;
@@ -746,7 +748,7 @@ export class Game {
     this.save();
     if ('scenario' in choice && choice.tutorial) return this.startCoach();
     this.coach.finish();
-    this.hud.toast(scenario ? `${scenario.name}: build rooms and paths before the first ferry` : 'Sandbox: everything is unlocked', 'info');
+    this.hud.toast(scenario ? `${scenario.name}: ${scenario.prebuilt ? 'the old resort needs work' : 'build rooms and paths before the first ferry'}` : 'Sandbox: everything is unlocked', 'info');
   }
 
   /** Listen to the current scenario for medals, objectives and the end. */
@@ -768,7 +770,7 @@ export class Game {
           this.sfx.play('fanfare');
           const r = this.profile.awardMedal(c.def.id, e.tier);
           this.saveProfile();
-          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, `${c.def.name} · +${r.xp} XP${r.first ? ', first time' : ''}`, !this.settings.reduceMotion);
+          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, `${c.def.name} · +${r.xp} XP${r.first ? ', first time' : ''} · ${this.profile.points('caribbean')} points`, !this.settings.reduceMotion);
         }
         case 'finished': {
           const xp = this.profile.finishMission(c.def.id, this.sim.rating);

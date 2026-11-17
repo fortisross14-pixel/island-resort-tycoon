@@ -20,7 +20,7 @@ function scenarioSim(w = resort(500000)): Sim {
   const sim = new Sim(w);
   sim.autoCheckIn = true;
   sim.pauseAtNight = true;
-  sim.startScenario('driftwood');
+  sim.startScenario('islandKitchen');
   return sim;
 }
 
@@ -32,10 +32,10 @@ describe('scenarios', () => {
   it('starts with three daily objectives and no medals', () => {
     const sim = scenarioSim();
     const c = sim.campaign!;
-    expect(c.def.name).toBe('Driftwood Beginnings');
+    expect(c.def.name).toBe('Island Kitchen');
     expect(c.state.objectives).toHaveLength(ACTIVE_OBJECTIVES);
     expect(c.bestMedal).toBeNull();
-    expect(c.daysLeft).toBe(SCENARIOS[0].days);
+    expect(c.daysLeft).toBe(SCENARIOS.find((x) => x.id === 'islandKitchen')!.days);
   });
 
   it('counts guests served and wins medals as goals are met', () => {
@@ -48,6 +48,7 @@ describe('scenarios', () => {
       sim.startDay();
     }
     expect(c.state.served).toBeGreaterThanOrEqual(20);
+    expect(c.state.foodRevenue).toBeGreaterThanOrEqual(2500);
     expect(medals).toContain('bronze');
     expect(c.state.medals.bronze).toBeGreaterThan(0);
   });
@@ -90,6 +91,44 @@ describe('scenarios', () => {
     copy.restore(JSON.parse(JSON.stringify(sim.snapshot())));
     expect(copy.campaign?.state.served).toBe(sim.campaign!.state.served);
     expect(copy.campaign?.state.objectives).toEqual(sim.campaign!.state.objectives);
+  });
+
+  it('a gold with a deadline can be missed; silver still counts', () => {
+    const sim = scenarioSim();
+    const c = sim.campaign!;
+    // Past the gold deadline before reaching the silver target.
+    sim.world.day = c.def.deadlines!.gold! + 1;
+    c.state.foodRevenue = 7000;
+    untilNight(sim);
+    expect(c.state.medals.silver).toBeDefined();
+    expect(c.state.medals.gold).toBeUndefined();
+    expect(c.missed('gold')).toBe(true);
+  });
+
+  it('a mission kit lends buildings you have not researched', () => {
+    const w = resort(500000);
+    const sim = new Sim(w);
+    sim.progression = true;
+    expect(sim.buildGate('beachBar').ok).toBe(false);
+    sim.startScenario('openForBusiness');
+    expect(sim.buildGate('beachBar').ok).toBe(true);
+    expect(sim.buildGate('pool').ok).toBe(false);
+  });
+
+  it('building goals count how many stand', () => {
+    const sim = new Sim(resort(500000));
+    sim.startScenario('openForBusiness');
+    const c = sim.campaign!;
+    const g = c.def.medals.bronze.find((x) => x.building === 'basicRooms')!;
+    expect(c.progress(g)).toBe(10);
+    expect(c.goalMet(g)).toBe(true);
+  });
+
+  it('every mission has goals for all three medals, and deadlines inside the mission', () => {
+    for (const s of SCENARIOS) {
+      for (const t of ['bronze', 'silver', 'gold'] as const) expect(s.medals[t].length, `${s.id} ${t}`).toBeGreaterThan(0);
+      for (const d of Object.values(s.deadlines ?? {})) expect(d).toBeLessThanOrEqual(s.days);
+    }
   });
 
   it('sandbox has no campaign', () => {

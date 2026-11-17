@@ -53,7 +53,7 @@ import {
   tripMinutes,
   type Slot,
 } from './activities';
-import { Campaign, type CampaignState } from './scenario';
+import { Campaign, type CampaignState, scenarioDef } from './scenario';
 import { Rng } from './rng';
 import { floorsOf, type Building, type Result, type Tile, type World } from './world';
 import { ELEVATOR_ABOVE, MAX_FLOORS_EARLY, MAX_FLOORS_RESEARCHED, ROOMS_PER_FLOOR, type BuildingKind } from './buildings';
@@ -536,6 +536,8 @@ export class Sim {
   /** Whether research allows a building yet. */
   buildGate(kind: BuildingKind): Result {
     if (!this.progression || this.research.isUnlocked(kind)) return { ok: true };
+    // A mission can hand you a building before you've researched it (Pass 4).
+    if (this.campaign?.def.kit?.includes(kind)) return { ok: true };
     const node = nodeFor(kind);
     return { ok: false, reason: node ? `Research ${node.name} first` : 'Not available yet' };
   }
@@ -1890,7 +1892,8 @@ export class Sim {
     this.trips = structuredClone(s.trips);
     this.slotsDone = { ...s.slotsDone };
     this.campaign?.dispose();
-    this.campaign = s.campaign ? new Campaign(this, s.campaign.scenario, structuredClone(s.campaign)) : null;
+    // A mission that no longer exists (renamed or retired) leaves the resort in free play.
+    this.campaign = s.campaign && scenarioDef(s.campaign.scenario) ? new Campaign(this, s.campaign.scenario, structuredClone(s.campaign)) : null;
     this.redDays = s.redDays;
     this.investor = s.investor ? { ...s.investor } : null;
     this.offer = s.offer ? { ...s.offer } : null;

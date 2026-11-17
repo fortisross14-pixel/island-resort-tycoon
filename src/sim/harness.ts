@@ -3,6 +3,8 @@ import { VENUES } from './needs';
 import { NODES } from './research';
 import { Sim, type NightReport } from './sim';
 import { World, type Tile } from './world';
+import { islandLayout } from './islands';
+import { applyPrebuilt, scenarioDef } from './scenario';
 
 /**
  * Headless playtest harness (Pass 2). Runs the real simulation for many days with a
@@ -38,7 +40,19 @@ export interface RunOptions {
   strategy: Strategy;
   days: number;
   seed?: number;
+  /** Legacy runs on the prototype map: a mission to attach (default none). */
   scenario?: string | null;
+  /** Play a mission on its own island, with its money, prebuilt resort and research (Pass 4). */
+  mission?: string;
+}
+
+/** A mission's opening: a spine north from the dock, two Basic Rooms and a Snack Bar. */
+export function buildIslandStarter(w: World, bot: Bot): void {
+  const d = w.dock;
+  for (let y = d.y - 1; y >= d.y - 7; y--) if (!w.placePath(d.x, y).ok) break;
+  bot.place('basicRooms');
+  bot.place('basicRooms');
+  bot.place('snackBar');
 }
 
 /** The GDD's day-1 layout: a spine from the dock, 4 Basic Rooms, a Buffet and a Snack Bar. */
@@ -92,6 +106,13 @@ export class Bot {
     const venues = this.w.buildings.filter((b) => VENUES[b.kind]);
     const wantVenues = Math.ceil(capacity / 5);
     if (venues.length < wantVenues) this.addVenue();
+    // 2b. Whatever the mission's medals ask to be built.
+    for (const tier of ['bronze', 'silver', 'gold'] as const)
+      for (const g of sim.campaign?.def.medals[tier] ?? [])
+        if (g.metric === 'building' && g.building) {
+          const have = this.w.buildings.filter((b) => b.kind === g.building).length;
+          if (have < g.target && this.affordable(g.building)) this.place(g.building);
+        }
     // 3. Front Desk and a Research Office once.
     for (const k of ['frontDesk', 'researchOffice'] as BuildingKind[])
       if (!this.w.buildings.some((b) => b.kind === k)) this.place(k);
@@ -233,16 +254,22 @@ export function playtest(opts: RunOptions): DayLog[] {
 }
 
 export function runPlaytest(opts: RunOptions): { log: DayLog[]; analysis: Analysis } {
-  const scenario = opts.scenario === undefined ? 'driftwood' : opts.scenario;
-  const w = World.newGame();
+  const mission = opts.mission ? scenarioDef(opts.mission) : undefined;
+  if (opts.mission && !mission) throw new Error(`Unknown mission ${opts.mission}`);
+  const scenario = mission ? mission.id : (opts.scenario ?? null);
+  const w = mission ? World.onIsland(islandLayout(mission.island), mission.startMoney) : World.newGame();
+  if (mission?.prebuilt) applyPrebuilt(w, mission.prebuilt);
   const sim = new Sim(w);
   (sim as unknown as { rng: { state: number } }).rng.state = opts.seed ?? 1;
-  sim.progression = !!scenario;
+  sim.progression = true;
+  // The player researched what the mission needs before starting it.
+  for (const id of mission?.needsResearch ?? []) sim.research.done.add(id);
   sim.startScenario(scenario);
   sim.pauseAtNight = true;
   sim.autoCheckIn = true; // the bot always places guests in their best room
-  buildStarter(w);
   const bot = opts.strategy === 'bot' ? new Bot(sim) : null;
+  if (mission) buildIslandStarter(w, bot ?? new Bot(sim));
+  else buildStarter(w);
   const log: DayLog[] = [];
   // Per building: days alive and net earnings.
   const earned = new Map<number, { kind: BuildingKind; net: number; days: number }>();

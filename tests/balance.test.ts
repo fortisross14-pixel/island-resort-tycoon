@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { START_MONEY } from '../src/sim/buildings';
 import { buildStarter, runPlaytest, type DayLog } from '../src/sim/harness';
+import { SCENARIOS } from '../src/sim/scenario';
 import { PLOT_BASE_PRICE, World } from '../src/sim/world';
 
 /**
@@ -9,9 +10,24 @@ import { PLOT_BASE_PRICE, World } from '../src/sim/world';
  */
 
 // The bot plays a whole 30-month mission (Pass 4: the four ratings make silver a full-length goal).
-const bot = [1, 2].map((seed) => runPlaytest({ strategy: 'bot', days: 30, seed }));
-const starter = [1, 2, 3].map((seed) => runPlaytest({ strategy: 'starter', days: 8, seed }).log);
-const dayOf = (log: DayLog[], medal: string) => log.find((l) => l.medal === medal || (medal === 'silver' && l.medal === 'gold'))?.day ?? Infinity;
+// Economy targets run on the prototype map with a mission's daily objectives attached.
+const bot = [1, 2].map((seed) => runPlaytest({ strategy: 'bot', days: 30, seed, scenario: 'islandKitchen' }));
+const starter = [1, 2, 3].map((seed) => runPlaytest({ strategy: 'starter', days: 8, seed, scenario: 'islandKitchen' }).log);
+/** First month a medal of this tier or better was held. */
+const monthOf = (log: DayLog[], tiers: string[]) => log.find((l) => l.medal && tiers.includes(l.medal))?.day ?? Infinity;
+const BRONZE = ['bronze', 'silver', 'gold'];
+const SILVER = ['silver', 'gold'];
+
+/**
+ * The difficulty curve of the Caribbean (Pass 4), played by the simple bot: it builds rooms,
+ * food and fun as demand grows, a little decor and repairs, but never runs activities. An
+ * average player should silver the beginner missions without trying; golds need speed;
+ * intermediate missions need quality or activities; advanced ones are out of its reach.
+ */
+const missionRun = (id: string, seed: number) => {
+  const def = SCENARIOS.find((s) => s.id === id)!;
+  return runPlaytest({ strategy: 'bot', days: def.days, seed, mission: id }).log;
+};
 
 describe('balance (GDD targets)', () => {
   it('the starting coins buy the starter resort with a little left over', () => {
@@ -48,13 +64,27 @@ describe('balance (GDD targets)', () => {
     }
   });
 
-  it('bronze comes early, silver takes a few weeks, gold is not quick', () => {
-    for (const { log } of bot) {
-      expect(dayOf(log, 'bronze')).toBeLessThanOrEqual(10);
-      expect(log.find((l) => l.medal === 'gold')?.day ?? Infinity).toBeGreaterThan(18);
+  it('beginner missions: silver comes without trying, gold needs speed', () => {
+    for (const id of ['openForBusiness', 'islandKitchen'])
+      for (const seed of [1, 2]) {
+        const log = missionRun(id, seed);
+        expect(monthOf(log, BRONZE), `${id} bronze`).toBeLessThanOrEqual(10);
+        expect(monthOf(log, SILVER), `${id} silver`).toBeLessThanOrEqual(15);
+        expect(monthOf(log, ['gold']), `${id} gold`).toBe(Infinity);
+      }
+  }, 30000);
+
+  it('intermediate missions: no gold without real effort, and activity missions need activities', () => {
+    for (const id of ['lagoonDays', 'familyCove', 'hideaway', 'longBeach', 'sunAndSea']) {
+      const log = missionRun(id, 1);
+      expect(monthOf(log, ['gold']), id).toBe(Infinity);
+      if (id === 'lagoonDays' || id === 'sunAndSea') expect(monthOf(log, BRONZE), id).toBe(Infinity);
     }
-    expect(Math.min(...bot.map(({ log }) => dayOf(log, 'silver')))).toBeLessThanOrEqual(30);
-  });
+  }, 30000);
+
+  it('advanced missions: even bronze is out of reach for a simple player', () => {
+    for (const id of ['newPaint', 'jewel']) expect(monthOf(missionRun(id, 1), BRONZE), id).toBe(Infinity);
+  }, 30000);
 
   it('a resort that never grows keeps a modest rating', () => {
     for (const log of starter) expect(log[log.length - 1].rating).toBeLessThan(3.3);
