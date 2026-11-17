@@ -18,11 +18,12 @@ const SANDBOX_ISLAND = 'twinPalms';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { ActivityView } from './render/activityView';
-import { SLOTS, activityOf, activityPrice, canStepOn, landmarksOn, routeQuality, routeStarts, type Slot } from './sim/activities';
+import { SLOTS, SLOT_NAMES, activityOf, activityPrice, canStepOn, landmarksOn, routeQuality, routeStarts, type Slot } from './sim/activities';
+import { GREET, ROLE_NAMES, hubTask, type Role } from './sim/staff';
 import { setWindowGlow } from './render/models';
-import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
+import { Hud, type PeopleData, type Speed, type Tab, type TrayItem } from './ui/hud';
 import { Sound } from './ui/sfx';
-import { monthYear } from './sim/calendar';
+import { monthName, monthYear } from './sim/calendar';
 import { Coach, type CoachState } from './ui/coach';
 import type { HighlightTone, RoomMark } from './render/worldView';
 
@@ -34,6 +35,8 @@ type Tool =
   | { type: 'demolish' }
   /** Carrying a building to a new spot (Pass 5). */
   | { type: 'move'; id: number; rot: Rotation }
+  /** Painting the beach area: the first tile decides whether the drag tags or untags. */
+  | { type: 'beach'; on: boolean | null }
   /** Drawing a hike trail or boat route for an activity hub (Pass 4 step 3). */
   | { type: 'route'; hubId: number; tiles: Tile[] };
 
@@ -77,6 +80,7 @@ const HINTS: Record<Tool['type'], string> = {
   build: 'Tap or drag next to a path',
   demolish: 'Tap to bulldoze: buildings and paths (50% back), jungle or rock',
   move: 'Tap where it should go · R or ⟳ to turn',
+  beach: 'Drag over your sand to mark the beach · drag over it again to clear · it needs a path',
 };
 
 /**
@@ -111,6 +115,8 @@ export class Game {
   private saveWarned = false;
   private lightInit = false;
   private lastBuildCost = 0;
+  private peopleRole: Role = 'operations';
+  private offerShown: Role | null = null;
   private activityView: ActivityView;
   private planRefresh = 0;
   private coach!: Coach;
@@ -144,6 +150,8 @@ export class Game {
         this.sim.reset();
       }
     }
+    // Resorts from before Pass 5 get their Welcome Center too.
+    if (this.world.layout.terrain) this.world.placeWelcomeCenter();
     this.history = new History(this.world);
     this.stage = new Stage(canvas);
     this.view = new WorldView(this.stage, this.world);
@@ -171,6 +179,33 @@ export class Game {
       onUndo: () => this.undo(),
       onCancel: () => (this.tool.type === 'route' ? this.finishRoute(true) : this.setTool({ type: 'none' })),
       onPlanToggle: (hubId, slot) => this.togglePlan(hubId, slot),
+      onStaffOffer: (role) => {
+        this.sim.offerStaff(role);
+        this.offerShown = role;
+        this.refreshPeople();
+      },
+      onHire: (role, i) => {
+        const r = this.sim.hire(role, i);
+        if (!r.ok) return this.hud.toast(r.reason);
+        this.sfx.play('chime');
+        this.hud.toast(`${r.worker.name} joins the ${ROLE_NAMES[role].toLowerCase()} team`, 'good');
+        this.offerShown = null;
+        this.refreshPeople();
+        this.save();
+      },
+      onFire: (id) => {
+        const w = this.sim.staff.find((x) => x.id === id);
+        this.sim.fire(id);
+        if (w) this.hud.toast(`${w.name} has left`, 'info');
+        this.refreshPeople();
+        this.save();
+      },
+      onAssign: (workerId, target) => this.assignStaff(workerId, target),
+      onPeopleRole: (role) => {
+        this.peopleRole = role;
+        this.offerShown = null;
+        this.refreshPeople();
+      },
       onPlanOpen: (hubId) => this.focusBuilding(hubId),
       onNewIsland: () => this.newIsland(),
       onSpeed: (sp) => this.setSpeed(sp),
@@ -179,6 +214,7 @@ export class Game {
       onAutoAssign: () => this.autoAssign(),
       onResearch: (id) => this.research(id),
     });
+    this.hud.onBusinessView = () => this.refreshBusiness();
     this.panel = new InfoPanel(hudRoot, this.sim, {
       addFloor: (id) => {
         const r = this.history.run(() => this.world.addFloor(id, this.sim.maxFloors));
@@ -197,6 +233,10 @@ export class Game {
         this.hud.toast(`Moving costs ${this.world.moveCost(id).toLocaleString('en-US')} coins`, 'info');
       },
       togglePlan: (id, slot) => this.togglePlan(id, slot),
+      welcome: (opt) => {
+        this.sim.welcome = { ...this.sim.welcome, [opt]: !this.sim.welcome[opt] };
+        this.save();
+      },
       repair: (id) => {
         const r = this.history.run(() => this.world.repair(id));
         if (r.ok) this.sfx.play('place');
@@ -452,7 +492,7 @@ export class Game {
   setTab(tab: Tab): void {
     this.tab = tab;
     this.hud.setTab(tab);
-    if (tab === 'plan') this.refreshPlan();
+    if (tab === 'plan') this.refreshBusiness();
     // Sheets and the side panel share the screen on phones: one at a time.
     if (tab !== 'none' && window.innerWidth < 700) this.panel.close();
     if (tab === 'guests') {
@@ -626,6 +666,112 @@ export class Game {
     this.save();
   }
 
+  // ---------- business: finances and people (Pass 5) ----------
+
+  private refreshBusiness(): void {
+    this.refreshPlan();
+    this.refreshPeople();
+    this.refreshFinances();
+  }
+
+  private refreshFinances(): void {
+    const months = this.sim.books.slice(-6).map((b) => ({
+      label: monthName(b.month, true),
+      revenue: { rooms: b.rooms, venues: b.venues, activities: b.activities },
+      expenses: { upkeep: b.upkeep, wages: b.wages, supplies: b.supplies, other: b.other },
+    }));
+    this.hud.setFinances({ months });
+  }
+
+  /** Who is on what, for the People view. */
+  private refreshPeople(): void {
+    const sim = this.sim;
+    const role = this.peopleRole;
+    const name = (id: number) => this.world.buildings.find((b) => b.id === id);
+    const taskLabel = (task: string) => {
+      if (task === GREET) return 'greeting';
+      const b = name(Number(task.split(':')[1]));
+      return b ? (activityOf(b.kind)?.name ?? BUILDINGS[b.kind].name).toLowerCase() : '';
+    };
+    const workers = sim.staff
+      .filter((w) => w.role === role)
+      .map((w) => ({
+        id: w.id,
+        name: w.name,
+        skill: w.skill,
+        wage: w.wage,
+        role: w.role,
+        busy:
+          w.role === 'operations'
+            ? SLOTS.filter((sl) => w.shifts?.[sl]).map((sl) => `${SLOT_NAMES[sl].toLowerCase()}: ${taskLabel(w.shifts![sl]!)}`).join(', ')
+            : w.role === 'security' && w.post
+              ? `at the ${BUILDINGS[name(Number(w.post.split(':')[1]))?.kind ?? 'pool'].name}`
+              : '',
+      }));
+    const data: PeopleData = { role, workers, candidates: this.offerShown === role ? (sim.candidates[role] ?? null) : null };
+    if (role === 'maintenance') {
+      const need = this.world.buildings.filter((b) => BUILDINGS[b.kind].family !== 'decor').length;
+      const cov = sim.maintenanceCoverage;
+      data.coverage =
+        cov >= 1
+          ? `The team keeps up with all ${need} buildings.`
+          : `The team keeps up with about ${Math.round(cov * 100)}% of your ${need} buildings: things wear faster and rooms aren’t as clean. Hire more.`;
+    }
+    if (role === 'operations') {
+      const rows: NonNullable<PeopleData['shifts']> = [];
+      const who = (task: string, sl: Slot) => sim.staff.find((w) => w.role === 'operations' && w.shifts?.[sl] === task)?.name ?? null;
+      if (this.world.buildings.some((b) => b.kind === 'welcomeCenter'))
+        rows.push({
+          task: GREET,
+          label: 'Greeting',
+          cells: {
+            morning: { open: true, who: who(GREET, 'morning') },
+            afternoon: { open: false, who: null, note: 'mornings only' },
+            evening: { open: false, who: null, note: '' },
+          },
+        });
+      for (const b of this.world.buildings.filter((x) => activityOf(x.kind))) {
+        const task = hubTask(b.id);
+        const cells = Object.fromEntries(
+          SLOTS.map((sl) => [sl, sim.isPlanned(b.id, sl) ? { open: true, who: who(task, sl) } : { open: false, who: null, note: 'not planned' }]),
+        ) as Record<Slot, { open: boolean; who: string | null; note?: string }>;
+        rows.push({ task, label: activityOf(b.kind)!.name, cells });
+      }
+      data.shifts = rows;
+    }
+    if (role === 'security')
+      data.posts = this.world.buildings
+        .filter((b) => b.kind === 'pool' || b.kind === 'lifeguardTower')
+        .map((b) => ({ id: b.id, label: BUILDINGS[b.kind].name, who: sim.guardAt(b.id)?.name ?? null }));
+    this.hud.setPeople(data);
+  }
+
+  private assignStaff(workerId: number | null, target: string): void {
+    const parts = target.split(':');
+    let r: { ok: true } | { ok: false; reason: string } = { ok: true };
+    if (parts[0] === 'shift') {
+      const slot = parts[1] as Slot;
+      const task = parts.slice(2).join(':');
+      if (workerId === null) {
+        const w = this.sim.staff.find((x) => x.shifts?.[slot] === task);
+        if (w) r = this.sim.assignShift(w.id, slot, null);
+      } else r = this.sim.assignShift(workerId, slot, task);
+    } else if (parts[0] === 'post') {
+      const id = Number(parts[1]);
+      if (workerId === null) {
+        const w = this.sim.guardAt(id);
+        if (w) r = this.sim.assignPost(w.id, null);
+      } else r = this.sim.assignPost(workerId, id);
+    }
+    if (!r.ok) {
+      this.sfx.play('error');
+      this.hud.toast(r.reason);
+    } else this.sfx.play('tap');
+    this.refreshPeople();
+    this.refreshPlan();
+    this.save();
+  }
+
   /** The Plan sheet rows: every activity hub with its slots and today's turnout. */
   private refreshPlan(): void {
     this.planRefresh = performance.now();
@@ -634,6 +780,7 @@ export class Game {
       .map((b) => {
         const def = activityOf(b.kind)!;
         const blocked = def.route && !this.world.routeOf(b.id) ? 'Tap to draw its route' : null;
+        const unguided = SLOTS.filter((sl) => this.sim.isPlanned(b.id, sl) && !this.sim.guideFor(b.id, sl)).map((sl) => SLOT_NAMES[sl].toLowerCase());
         const slots = Object.fromEntries(SLOTS.map((s) => [s, this.sim.isPlanned(b.id, s)])) as Record<Slot, boolean>;
         const went = Object.fromEntries(
           SLOTS.map((s) => {
@@ -647,7 +794,7 @@ export class Game {
           activity: def.name,
           icon: b.kind,
           quality: Math.round(this.sim.sessionQuality(b.id)),
-          blocked,
+          blocked: blocked ?? (unguided.length ? `No guide in the ${unguided.join(' and ')} (People)` : null),
           slots,
           went,
           price: activityPrice(def, this.sim.activityPrice(b.id)),
@@ -723,6 +870,16 @@ export class Game {
     if (this.ghostAt) this.previewBuild(this.ghostAt);
   }
 
+  /** Tag (or untag) beach tiles under a drag; the first tile picks which. */
+  private paintBeach(t: Tile): void {
+    if (this.tool.type !== 'beach') return;
+    if (this.tool.on === null) this.tool.on = !this.world.isBeach(t.x, t.y);
+    if (this.world.isBeach(t.x, t.y) === this.tool.on) return;
+    const r = this.world.setBeach(t.x, t.y, this.tool.on);
+    if (r.ok) this.history.touch();
+    this.view.highlight([t], r.ok ? 'ok' : 'bad');
+  }
+
   private tryMove(t: Tile): void {
     if (this.tool.type !== 'move') return;
     const { id, rot } = this.tool;
@@ -757,6 +914,7 @@ export class Game {
     const island = scenario ? scenario.island : SANDBOX_ISLAND;
     const fresh = World.onIsland(islandLayout(island), scenario ? scenario.startMoney : 50000);
     if (scenario?.prebuilt) applyPrebuilt(fresh, scenario.prebuilt);
+    fresh.placeWelcomeCenter();
     this.world.restore(fresh.snapshot());
     this.view.frameStart();
     this.sim.reset();
@@ -1018,6 +1176,7 @@ export class Game {
     if (item === 'path') this.setTool({ type: 'path' });
     else if (item === 'land') this.setTool(this.tool.type === 'land' ? { type: 'none' } : { type: 'land' });
     else if (item === 'bulldoze') this.setTool(this.tool.type === 'demolish' ? { type: 'none' } : { type: 'demolish' });
+    else if (item === 'beach') this.setTool(this.tool.type === 'beach' ? { type: 'none' } : { type: 'beach', on: null });
     else {
       const rot = this.tool.type === 'build' && this.tool.kind === item ? this.tool.rot : 0;
       this.setTool({ type: 'build', kind: item, rot });
@@ -1149,6 +1308,12 @@ export class Game {
       if (t) this.routeTo(t);
       return;
     }
+    if (this.tool.type === 'beach') {
+      this.history.begin();
+      this.tool.on = null;
+      if (t) this.paintBeach(t);
+      return;
+    }
     if (this.tool.type === 'path') {
       this.history.begin();
       this.stroke = { last: null, placed: 0, firstError: null };
@@ -1191,6 +1356,7 @@ export class Game {
     const t = this.tileAt(e.clientX, e.clientY);
     if (!t) return;
     if (this.tool.type === 'route') return this.routeTo(t);
+    if (this.tool.type === 'beach') return this.paintBeach(t);
     if (this.tool.type === 'path') {
       const last = this.stroke?.last;
       if (!last || last.x !== t.x || last.y !== t.y) this.strokeTo(t);
@@ -1234,6 +1400,10 @@ export class Game {
         return;
       case 'move':
         if (t) this.tryMove(t);
+        return;
+      case 'beach':
+        this.history.commit();
+        if (this.tool.on === true && !this.world.beachReached()) this.hud.toast('Guests need a path that touches the beach', 'info');
         return;
       case 'demolish':
         if (t && tap) this.tryDemolish(t);

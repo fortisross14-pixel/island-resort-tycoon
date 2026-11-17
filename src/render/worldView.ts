@@ -187,7 +187,7 @@ export class WorldView {
   private syncTerrain(): void {
     const w = this.world;
     let key = `${w.layout.id ?? ''}:${w.size}:${w.plots.map((p) => (p.owned ? 1 : 0)).join('')}:`;
-    if (w.layout.terrain) for (let y = 0; y < w.size; y++) for (let x = 0; x < w.size; x++) key += w.terrainAt(x, y);
+    if (w.layout.terrain) for (let y = 0; y < w.size; y++) for (let x = 0; x < w.size; x++) key += w.terrainAt(x, y) + (w.isBeach(x, y) ? 'B' : '');
     if (key === this.landKey) return;
     this.landKey = key;
     this.fitIsland();

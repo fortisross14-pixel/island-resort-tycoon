@@ -90,6 +90,8 @@ export function buildTerrain(world: World): THREE.Group {
     c.set(COLORS[t.t]);
     if (t.t === 'g' && (t.x + t.y) % 2) c.copy(GRASS_DARK);
     if (t.t === 's' && (t.x + t.y) % 2) c.offsetHSL(0, 0, -0.025);
+    // The beach area (Pass 5): paler, finer sand.
+    if (world.isBeach(t.x, t.y)) c.set((t.x + t.y) % 2 ? '#fbeccb' : '#fff3d9');
     // Land you don't own yet is a little muted.
     if (world.layout.terrain && !world.isLand(t.x, t.y)) c.lerp(UNOWNED, 0.28);
     cols.setColorAt(i, c);

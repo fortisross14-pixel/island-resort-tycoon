@@ -64,6 +64,8 @@ export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 14, bonus: { fun: 5 } },
   buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 26, bonus: { comfort: 5 } },
   beachBar: { need: 'fun', gain: 40, capacity: 4, service: 4, lineMax: 4, basePrice: 12, bonus: { hunger: 5 } },
+  beachFoodPost: { need: 'hunger', gain: 30, capacity: 2, service: 2.5, lineMax: 4, basePrice: 12, bonus: { fun: 5 } },
+  beachClub: { need: 'fun', gain: 55, capacity: 8, service: 8, lineMax: 6, basePrice: 30, bonus: { comfort: 15, hunger: 5 } },
   giftShop: { need: 'fun', gain: 30, capacity: 3, service: 3, lineMax: 3, basePrice: 12 },
   // Free to use: it earns through happier guests and better reviews (GDD "Free (appeal)").
   pool: { need: 'fun', gain: 35, capacity: 10, service: 7, lineMax: 6, basePrice: 0, bonus: { comfort: 25 } },

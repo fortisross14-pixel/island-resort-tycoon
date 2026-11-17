@@ -41,6 +41,7 @@ export class InfoPanel {
       repair(id: number): void;
       drawRoute(id: number): void;
       move(id: number): void;
+      welcome(opt: 'drinks' | 'leis'): void;
       togglePlan(id: number, slot: Slot): void;
     },
   ) {
@@ -63,6 +64,8 @@ export class InfoPanel {
       if (t.closest('[data-repair]')) this.actions.repair(this.subject.id);
       if (t.closest('[data-route]')) this.actions.drawRoute(this.subject.id);
       if (t.closest('[data-move]')) return this.actions.move(this.subject.id);
+      const wopt = t.closest<HTMLElement>('[data-welcome]');
+      if (wopt) this.actions.welcome(wopt.dataset.welcome as 'drinks' | 'leis');
       const slot = t.closest<HTMLElement>('[data-hubslot]');
       if (slot) this.actions.togglePlan(this.subject.id, slot.dataset.hubslot as Slot);
       const ap = t.closest<HTMLButtonElement>('[data-aprice]');
@@ -158,6 +161,7 @@ export class InfoPanel {
         <dt>Now</dt><dd>${v.serving} of ${def.capacity} served · ${v.line.length} in line</dd>
         <dt>Fills</dt><dd>${NEED_LABELS[def.need]} +${def.gain}</dd>
         <dt>Rates</dt><dd>${RATING_NAMES[ratingOf(b.kind)]}</dd>
+        ${b.kind === 'pool' ? `<dt>Lifeguard</dt><dd>${this.sim.guardAt(b.id)?.name ?? '<span class="warn">Nobody on duty (Business, People)</span>'}</dd>` : ''}
       </dl>`;
   }
 
@@ -166,7 +170,7 @@ export class InfoPanel {
     const c = conditionOf(b);
     const cost = this.sim.world.repairCost(b.id);
     const note = c < 50 ? '<p class="estimate warn">Run-down: guests notice, and it spoils the view nearby.</p>' : '';
-    const repair = c < 99 ? `<button data-repair class="${c < 50 ? 'urgent' : ''}">Repair <span>${coin}${cost.toLocaleString('en-US')}</span></button>` : '';
+    const repair = c < 99 && cost > 0 ? `<button data-repair class="${c < 50 ? 'urgent' : ''}">Repair <span>${coin}${cost.toLocaleString('en-US')}</span></button>` : '';
     const move = BUILDINGS[b.kind].fixed ? '' : `<button data-move title="Move it somewhere else">Move <span>${coin}${this.sim.world.moveCost(b.id).toLocaleString('en-US')}</span></button>`;
     return `<div class="condition">${bar(c, 'Condition')}<div class="cond-actions">${repair}${move}</div></div>${note}`;
   }
@@ -215,6 +219,19 @@ export class InfoPanel {
   }
 
   private serviceHtml(b: Building): string {
+    if (b.kind === 'welcomeCenter') {
+      const w = this.sim.welcome;
+      const greeter = this.sim.greeter;
+      const opt = (k: 'drinks' | 'leis', label: string, cost: number) =>
+        `<label class="check"><input type="checkbox" data-welcome="${k}" ${w[k] ? 'checked' : ''} /> ${label} <small>${coin}${cost} a guest</small></label>`;
+      return `<p class="estimate">Every party is welcomed here when they get their room.</p>
+        ${opt('drinks', 'Free welcome drinks', 3)}${opt('leis', 'Flower necklaces', 2)}
+        <dl><dt>Greeting team</dt><dd>${greeter ? `${greeter.name} (mornings)` : '<span class="warn">Nobody: put an Operations person on the morning greeting shift (Business, People)</span>'}</dd></dl>`;
+    }
+    if (b.kind === 'lifeguardTower' || b.kind === 'pool') {
+      const guard = this.sim.guardAt(b.id);
+      return `<p class="estimate">${BUILDINGS[b.kind].blurb}</p><dl><dt>Lifeguard</dt><dd>${guard ? guard.name : '<span class="warn">Nobody on duty (Business, People, Security)</span>'}</dd>${b.kind === 'lifeguardTower' ? `<dt>Beach</dt><dd>${Math.round(this.sim.beachQuality())} / 100</dd>` : ''}</dl>`;
+    }
     return `<p class="estimate">${BUILDINGS[b.kind].blurb}</p><dl><dt>Built</dt><dd>${monthYear(b.builtDay)}</dd></dl>`;
   }
 

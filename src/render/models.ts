@@ -743,7 +743,121 @@ export function tourBoat(kayak: boolean): THREE.Group {
   return g;
 }
 
+// ---------- welcome center and beach (Pass 5) ----------
+
+function welcomeCenter(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.7, 0.55, 0.7, PALETTE.wallWarm, 0, 0.04, -0.05));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1).rotateY(Math.PI / 4), mat('#d9b46a'));
+  roof.scale.set(2.1, 0.4, 1.05);
+  roof.position.y = 0.79;
+  roof.castShadow = true;
+  g.add(roof);
+  g.add(box(1.0, 0.08, 0.12, '#2ec4b6', 0, 0.42, 0.32));
+  for (const x of [-0.6, 0.6]) {
+    const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), mat('#ff5fa2'));
+    bloom.position.set(x, 0.12, 0.42);
+    g.add(bloom);
+  }
+  return g;
+}
+
+function lifeguardTower(): THREE.Group {
+  const g = new THREE.Group();
+  for (const [x, z] of [
+    [-0.25, -0.25],
+    [0.25, -0.25],
+    [-0.25, 0.25],
+    [0.25, 0.25],
+  ])
+    g.add(box(0.06, 0.8, 0.06, PALETTE.white, x, 0, z));
+  g.add(box(0.65, 0.35, 0.65, '#e64a3d', 0, 0.8));
+  g.add(box(0.75, 0.05, 0.75, PALETTE.white, 0, 1.15));
+  g.add(box(0.06, 0.4, 0.06, PALETTE.white, 0.3, 1.2, 0.3));
+  const flag = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 3), mat('#ffd23d'));
+  flag.rotation.z = -Math.PI / 2;
+  flag.position.set(0.4, 1.52, 0.3);
+  g.add(flag);
+  return g;
+}
+
+function changingRooms(): THREE.Group {
+  const g = new THREE.Group();
+  for (const [i, c] of ['#4fc6e8', '#ff7a59', '#ffd23d'].entries()) {
+    g.add(box(0.5, 0.7, 0.55, c, -0.6 + i * 0.6, 0.02));
+    g.add(box(0.56, 0.05, 0.6, PALETTE.white, -0.6 + i * 0.6, 0.72));
+  }
+  return g;
+}
+
+function lockers(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.7, 0.35, '#7aa7c7', 0, 0.02, -0.1));
+  for (let i = 0; i < 3; i++) g.add(box(0.02, 0.6, 0.02, '#3a4a52', -0.2 + i * 0.2, 0.07, 0.08));
+  return g;
+}
+
+function towelRental(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.35, 0.45, PALETTE.wood, 0, 0.02, -0.05));
+  for (const [i, c] of ['#ff7a59', '#2ec4b6', '#ffd23d', '#c88cff'].entries()) g.add(box(0.14, 0.06, 0.38, c, -0.24 + i * 0.16, 0.38, -0.05));
+  return g;
+}
+
+function beachFoodPost(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.4, 0.5, '#f2b441', 0, 0.02, -0.05));
+  g.add(box(0.06, 0.6, 0.06, PALETTE.wood, -0.3, 0.42, 0.18));
+  g.add(box(0.06, 0.6, 0.06, PALETTE.wood, 0.3, 0.42, 0.18));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.3, 4).rotateY(Math.PI / 4), mat('#d9b46a'));
+  roof.position.y = 1.15;
+  roof.castShadow = true;
+  g.add(roof);
+  return g;
+}
+
+function beachClub(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(2.7, 0.12, 1.7, '#c99a64', 0, 0.02));
+  g.add(box(1.2, 0.5, 0.6, PALETTE.white, -0.6, 0.14, -0.45));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1).rotateY(Math.PI / 4), mat('#d9b46a'));
+  roof.scale.set(1.6, 0.45, 0.9);
+  roof.position.set(-0.6, 0.86, -0.45);
+  roof.castShadow = true;
+  g.add(roof);
+  for (const [i, c] of ['#ffffff', '#2ec4b6', '#ffffff'].entries()) {
+    g.add(box(0.36, 0.1, 0.7, c, 0.3 + i * 0.4, 0.14, 0.35));
+  }
+  for (const x of [0.5, 1.1]) {
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.15, 8), mat('#fff4e2'));
+    shade.position.set(x, 1.0, 0.2);
+    shade.castShadow = true;
+    g.add(shade);
+    g.add(box(0.03, 0.9, 0.03, PALETTE.white, x, 0.1, 0.2));
+  }
+  return g;
+}
+
+function umbrella(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.03, 0.85, 0.03, PALETTE.white, 0, 0));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.18, 8), mat(['#ff7a59', '#2ec4b6', '#ffd23d'][Math.floor(Math.random() * 3)]));
+  shade.position.y = 0.9;
+  shade.castShadow = true;
+  g.add(shade);
+  g.add(box(0.5, 0.03, 0.25, PALETTE.white, 0.15, 0.08, 0.25));
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  welcomeCenter,
+  lifeguardTower,
+  changingRooms,
+  lockers,
+  towelRental,
+  beachFoodPost,
+  beachClub,
+  umbrella,
   trailHut,
   yogaDeck,
   kayakRental,

@@ -1,5 +1,6 @@
 import { MAX_ROUTE, TRAIL_TILE_COST, activityOf, canStepOn, routeStarts, type Landmark, type Route } from './activities';
 import {
+  zoneOf,
   BUILDINGS,
   DEMOLISH_REFUND,
   ELEVATOR_COST,
@@ -154,6 +155,8 @@ export interface WorldSnapshot {
   buildings: Building[];
   /** Trails and boat routes, one per activity hub (Pass 4 step 3). */
   routes?: Route[];
+  /** Tiles tagged as beach area (Pass 5). */
+  beach?: number[];
 }
 
 const OK: Result = { ok: true };
@@ -188,6 +191,8 @@ export class World {
   private buildingsById = new Map<number, Building>();
   /** Activity routes by hub id. */
   private routesByHub = new Map<number, Route>();
+  /** Beach-area flag per tile (Pass 5). */
+  private beach = new Uint8Array(0);
   /** Extra rule from outside the map, e.g. research unlocks (set by the Sim). */
   gate: ((kind: BuildingKind) => Result) | null = null;
   private listeners = new Set<() => void>();
@@ -218,6 +223,7 @@ export class World {
       this.land = new Uint8Array(cells);
     }
     this.terrain = new Uint8Array(cells).fill(GRASS);
+    if (this.beach.length !== cells) this.beach = new Uint8Array(cells);
     this.heights = new Uint8Array(cells);
     this.plotIdx = new Int16Array(cells).fill(-1);
     if (layout.terrain) for (let i = 0; i < cells; i++) this.terrain[i] = layout.terrain.charCodeAt(i);
@@ -457,14 +463,38 @@ export class World {
       if (other && other !== moving) return fail('Blocked by a building');
     }
     const def = BUILDINGS[kind];
-    // Decor stands anywhere on your land: it doesn't need a path of its own.
-    if (def.family !== 'decor' && this.accessTiles(tiles).length === 0) return fail('Must touch a path');
+    // The beach area (Pass 5): beach buildings on it, inland ones off it.
+    const zone = zoneOf(kind);
+    if (zone === 'beach' && !tiles.every((t) => this.isBeach(t.x, t.y))) return fail('Goes on the beach area');
+    if (zone === 'inland' && tiles.some((t) => this.isBeach(t.x, t.y))) return fail('Not on the beach area');
+    // Decor and beach services don't need a path of their own; beach ones need the beach to have one.
+    if (def.family !== 'decor' && !def.passive && this.accessTiles(tiles).length === 0) return fail('Must touch a path');
+    if (zone === 'beach' && def.passive && !this.beachReached()) return fail('Lay a path to the beach first');
     if (def.decor?.sand && !tiles.every((t) => this.terrainAt(t.x, t.y) === 's' || !this.layout.terrain)) return fail('Goes on the sand');
     if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => this.isShore(t.x + dx, t.y + dy))))
       return fail('Must be on the shore');
     const cost = moving ? this.moveCost(moving.id) + this.buildCost(kind, x, y, rot) - BUILDINGS[kind].cost : this.buildCost(kind, x, y, rot);
     if (this.money < cost) return fail('Not enough coins');
     return OK;
+  }
+
+  /** The Welcome Center goes next to the pier at the start of every resort (free, fixed). */
+  placeWelcomeCenter(): Building | null {
+    if (this.buildings.some((b) => b.kind === 'welcomeCenter')) return null;
+    const d = this.dock;
+    let best: { x: number; y: number; rot: Rotation; dist: number } | null = null;
+    for (let y = d.y - 3; y <= d.y; y++)
+      for (let x = d.x - 3; x <= d.x + 3; x++)
+        for (const rot of [0, 1] as Rotation[])
+          // Beside the pier, never on the way inland from it.
+          if (
+            this.footprintTiles('welcomeCenter', x, y, rot).every((t) => t.x !== d.x) &&
+            this.canPlaceBuilding('welcomeCenter', x, y, rot).ok
+          ) {
+            const dist = Math.abs(x - d.x) + Math.abs(y - d.y);
+            if (!best || dist < best.dist) best = { x, y, rot, dist };
+          }
+    return best ? (this.placeBuilding('welcomeCenter', best.x, best.y, best.rot).building ?? null) : null;
   }
 
   // ---------- moving and bulldozing (Pass 5) ----------
@@ -555,6 +585,53 @@ export class World {
     this.money += Math.floor(investedIn(b) * DEMOLISH_REFUND);
     this.emit();
     return OK;
+  }
+
+  // ---------- beach area (Pass 5) ----------
+
+  isBeach(x: number, y: number): boolean {
+    return this.inBounds(x, y) && this.beach[this.idx(x, y)] === 1;
+  }
+
+  beachTiles(): Tile[] {
+    const out: Tile[] = [];
+    for (let y = 0; y < this.size; y++) for (let x = 0; x < this.size; x++) if (this.beach[this.idx(x, y)]) out.push({ x, y });
+    return out;
+  }
+
+  /** Owned sand (or any land on prototype maps), free of buildings and paths. */
+  canTagBeach(x: number, y: number): Result {
+    if (!this.isLand(x, y)) return fail('Buy this land first');
+    if (this.layout.terrain && this.terrainAt(x, y) !== 's') return fail('A beach needs sand');
+    if (this.isPath(x, y)) return fail('That’s a path');
+    const b = this.buildingAt(x, y);
+    if (b && zoneOf(b.kind) === 'inland') return fail('A building stands there');
+    return OK;
+  }
+
+  /** Tag or untag a tile as beach area (free). */
+  setBeach(x: number, y: number, on: boolean): Result {
+    if (on) {
+      const check = this.canTagBeach(x, y);
+      if (!check.ok) return check;
+    } else {
+      const b = this.buildingAt(x, y);
+      if (b && zoneOf(b.kind) === 'beach') return fail(`${BUILDINGS[b.kind].name} needs the beach`);
+    }
+    this.beach[this.idx(x, y)] = on ? 1 : 0;
+    this.emit();
+    return OK;
+  }
+
+  /** Path tiles that touch the beach area: where guests step onto the sand. */
+  beachEntrances(): Tile[] {
+    const out: Tile[] = [];
+    for (const t of this.pathTiles()) if (NEIGHBOURS.some(([dx, dy]) => this.isBeach(t.x + dx, t.y + dy))) out.push(t);
+    return out;
+  }
+
+  beachReached(): boolean {
+    return this.beachEntrances().length > 0;
   }
 
   // ---------- activity routes (Pass 4 step 3) ----------
@@ -766,6 +843,7 @@ export class World {
       paths,
       buildings: this.buildings.map((b) => ({ ...b })),
       routes: this.routes.map((r) => ({ ...r, tiles: r.tiles.map((t) => ({ ...t })) })),
+      beach: [...this.beach].flatMap((v, i) => (v ? [i] : [])),
     };
   }
 
@@ -788,6 +866,8 @@ export class World {
     }
     this.routesByHub.clear();
     for (const r of s.routes ?? []) this.routesByHub.set(r.hubId, { ...r, tiles: r.tiles.map((t) => ({ ...t })) });
+    this.beach.fill(0);
+    for (const i of s.beach ?? []) this.beach[i] = 1;
     this.emit();
   }
 

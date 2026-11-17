@@ -1,4 +1,5 @@
 import { SLOTS, SLOT_NAMES, type Slot } from '../sim/activities';
+import { ROLES, ROLE_JOBS, ROLE_NAMES, type Role } from '../sim/staff';
 import { MAINTENANCE_EFFECT, MAINTENANCE_LEVELS, MAINTENANCE_NAMES, type MaintenanceLevel } from '../sim/ratings';
 import { yearOf } from '../sim/calendar';
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, RATING_CATEGORIES, RATING_NAMES, type BuildingKind, type RatingCategory } from '../sim/buildings';
@@ -7,7 +8,7 @@ import { WISHES, type Wish } from '../sim/match';
 import { BRANCHES, GATE_COUNT, type NodeStatus, type ResearchNode } from '../sim/research';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
-export type TrayItem = BuildingKind | 'path' | 'land' | 'bulldoze';
+export type TrayItem = BuildingKind | 'path' | 'land' | 'bulldoze' | 'beach';
 
 /** One activity hub in the Plan sheet (Pass 4 step 3). */
 export interface PlanRow {
@@ -24,7 +25,30 @@ export interface PlanRow {
   price: number;
 }
 
+/** The People view (Pass 5). */
+export interface PeopleData {
+  role: Role;
+  workers: Array<{ id: number; name: string; skill: number; wage: number; role: Role; busy: string }>;
+  candidates: Array<{ name: string; skill: number; wage: number }> | null;
+  /** Maintenance: how many buildings the team keeps up with. */
+  coverage?: string;
+  /** Operations: rows of the shift table. */
+  shifts?: Array<{ task: string; label: string; cells: Record<Slot, { open: boolean; who: string | null; note?: string }> }>;
+  /** Security: places that need a lifeguard. */
+  posts?: Array<{ id: number; label: string; who: string | null }>;
+}
+
+export interface FinanceData {
+  months: Array<{ label: string; revenue: Record<string, number>; expenses: Record<string, number> }>;
+}
+
 export interface HudHandlers {
+  onStaffOffer(role: Role): void;
+  onHire(role: Role, index: number): void;
+  onFire(workerId: number): void;
+  /** Drop a worker on a shift cell ('shift:<slot>:<task>') or a post ('post:<id>'); null worker = clear it. */
+  onAssign(workerId: number | null, target: string): void;
+  onPeopleRole(role: Role): void;
   /** Toggle a hub's session in a slot, or open the hub (Plan sheet). */
   onPlanToggle(hubId: number, slot: Slot): void;
   onPlanOpen(hubId: number): void;
@@ -94,6 +118,14 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  welcomeCenter: '<svg viewBox="0 0 32 32"><rect x="5" y="15" width="22" height="11" fill="#ffe2bd"/><path d="M3 15 L16 7 L29 15Z" fill="#d9b46a"/><rect x="11" y="18" width="10" height="2" fill="#2ec4b6"/><circle cx="8" cy="25" r="2" fill="#ff5fa2"/><circle cx="24" cy="25" r="2" fill="#ff5fa2"/></svg>',
+  lifeguardTower: '<svg viewBox="0 0 32 32"><rect x="8" y="16" width="2" height="12" fill="#fff"/><rect x="22" y="16" width="2" height="12" fill="#fff"/><rect x="7" y="10" width="18" height="7" fill="#e64a3d"/><rect x="6" y="9" width="20" height="2" fill="#fff"/><rect x="23" y="3" width="1.5" height="7" fill="#fff"/><path d="M24.5 3 L29 5 L24.5 7Z" fill="#ffd23d"/></svg>',
+  changingRooms: '<svg viewBox="0 0 32 32"><rect x="3" y="12" width="8" height="15" fill="#4fc6e8"/><rect x="12" y="12" width="8" height="15" fill="#ff7a59"/><rect x="21" y="12" width="8" height="15" fill="#ffd23d"/><rect x="2" y="10" width="28" height="3" fill="#fff"/></svg>',
+  lockers: '<svg viewBox="0 0 32 32"><rect x="6" y="8" width="20" height="20" fill="#7aa7c7"/><rect x="12" y="9" width="1" height="18" fill="#3a4a52"/><rect x="19" y="9" width="1" height="18" fill="#3a4a52"/><circle cx="10" cy="17" r="1" fill="#3a4a52"/><circle cx="17" cy="17" r="1" fill="#3a4a52"/><circle cx="24" cy="17" r="1" fill="#3a4a52"/></svg>',
+  towelRental: '<svg viewBox="0 0 32 32"><rect x="5" y="17" width="22" height="10" fill="#a8754a"/><rect x="6" y="11" width="4" height="7" fill="#ff7a59"/><rect x="11" y="11" width="4" height="7" fill="#2ec4b6"/><rect x="16" y="11" width="4" height="7" fill="#ffd23d"/><rect x="21" y="11" width="4" height="7" fill="#c88cff"/></svg>',
+  beachFoodPost: '<svg viewBox="0 0 32 32"><path d="M4 12 L16 4 L28 12Z" fill="#d9b46a"/><rect x="7" y="12" width="2" height="8" fill="#a8754a"/><rect x="23" y="12" width="2" height="8" fill="#a8754a"/><rect x="5" y="19" width="22" height="9" fill="#f2b441"/><circle cx="13" cy="16" r="2" fill="#ff7a59"/><circle cx="19" cy="16" r="2" fill="#7fcf5a"/></svg>',
+  beachClub: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="4" fill="#c99a64"/><rect x="3" y="15" width="11" height="7" fill="#fff"/><path d="M2 15 L8.5 9 L15 15Z" fill="#d9b46a"/><rect x="17" y="19" width="5" height="3" fill="#2ec4b6"/><rect x="24" y="19" width="5" height="3" fill="#fff"/><path d="M17 12 Q22 7 27 12Z" fill="#fff4e2"/><rect x="21.5" y="12" width="1" height="7" fill="#fff"/></svg>',
+  umbrella: '<svg viewBox="0 0 32 32"><path d="M4 14 Q16 2 28 14Z" fill="#ff7a59"/><path d="M10 14 Q16 6 22 14Z" fill="#fff4e2"/><rect x="15.5" y="13" width="1" height="15" fill="#888"/><rect x="18" y="24" width="10" height="2" fill="#fff"/></svg>',
   trailHut: '<svg viewBox="0 0 32 32"><path d="M4 16 L16 6 L28 16Z" fill="#c9a35a"/><rect x="7" y="16" width="18" height="11" fill="#a8754a"/><rect x="14" y="20" width="4" height="7" fill="#7d5534"/><rect x="26" y="12" width="1.5" height="16" fill="#7d5534"/><rect x="24" y="12" width="6" height="3" fill="#2e9e4f"/></svg>',
   yogaDeck: '<svg viewBox="0 0 32 32"><rect x="3" y="7" width="26" height="2" fill="#f3e6c8"/><rect x="4" y="9" width="2" height="16" fill="#7d5534"/><rect x="26" y="9" width="2" height="16" fill="#7d5534"/><rect x="3" y="24" width="26" height="3" fill="#c99a64"/><circle cx="16" cy="13" r="2.5" fill="#3a4a52"/><path d="M16 15.5 L16 20 M11 18 L21 18 M16 20 L12 23.5 M16 20 L20 23.5" stroke="#3a4a52" stroke-width="2" stroke-linecap="round"/></svg>',
   kayakRental: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><ellipse cx="16" cy="21" rx="12" ry="3" fill="#ff7a59"/><rect x="15" y="9" width="2" height="14" fill="#555" transform="rotate(30 16 16)"/><rect x="10" y="7" width="5" height="3" rx="1" fill="#ffd23d" transform="rotate(30 16 16)"/></svg>',
@@ -127,6 +159,7 @@ const ICONS: Record<TrayItem, string> = {
   spa: '<svg viewBox="0 0 32 32"><path d="M4 13 L16 6 L28 13 Z" fill="#5fb3a5"/><rect x="6" y="13" width="20" height="13" fill="#fff"/><path d="M16 15 q-4 4 0 8 q4 -4 0 -8 Z" fill="#7fd8e8"/></svg>',
   boutique: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#f6effa"/><rect x="4" y="10" width="24" height="4" fill="#7f55b8"/><path d="M12 18 h8 l-1 7 h-6 Z" fill="#ffd166"/></svg>',
   diveShop: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><rect x="5" y="11" width="14" height="11" fill="#3b8fd6"/><rect x="22" y="6" width="1.5" height="14" fill="#9b6b43"/><rect x="23.5" y="6" width="6" height="4" fill="#ff4d4d"/></svg>',
+  beach: '<svg viewBox="0 0 32 32"><rect x="2" y="20" width="28" height="9" fill="#6fd6d6"/><path d="M2 21 Q16 14 30 21 V24 H2Z" fill="#f2deaa"/><path d="M8 14 Q14 6 20 14Z" fill="#ff7a59"/><rect x="13.5" y="13" width="1" height="8" fill="#888"/><circle cx="25" cy="8" r="3.5" fill="#ffd23d"/></svg>',
   bulldoze: '<svg viewBox="0 0 32 32"><rect x="9" y="10" width="13" height="9" rx="1.5" fill="#f2b441"/><rect x="11" y="6" width="7" height="6" fill="#f2b441"/><rect x="12" y="7" width="5" height="3" fill="#bfe7f5"/><path d="M22 12 L28 14 L28 24 L22 21 Z" fill="#8d897c"/><rect x="6" y="20" width="18" height="6" rx="3" fill="#3a4a52"/><circle cx="10" cy="23" r="1.8" fill="#888"/><circle cx="20" cy="23" r="1.8" fill="#888"/></svg>',
   land: '<svg viewBox="0 0 32 32"><path d="M2 22 Q16 14 30 22 V28 H2 Z" fill="#6fd6d6"/><path d="M7 21 Q16 10 25 21 Z" fill="#9fd36f"/><rect x="15" y="6" width="2" height="10" fill="#7d5534"/><path d="M17 6 L24 9 L17 12 Z" fill="#ff8a4c"/></svg>',
   path: '<svg viewBox="0 0 32 32"><path d="M6 28 C 10 18, 22 20, 26 4" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>',
@@ -153,7 +186,8 @@ const UI: Record<string, string> = {
   star: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6L2.5 9.4l6.6-.8z" fill="#f2b62a" stroke="#8a5a00" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   build: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l10 5-10 5L2 7zm-8.2 8.1L12 14.2l8.2-4.1L22 11l-10 5-10-5zm0 4L12 18.2l8.2-4.1L22 15l-10 5-10-5z"/></svg>',
   guests: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 2.2 8 5v3H4v-3c0-2.8 3.6-5 8-5z"/></svg>',
-  plan: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zM5 9v11h14V9zm2 2h4v3H7zm6 0h4v3h-4zm-6 5h4v2H7z"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 3h6a2 2 0 0 1 2 2v2h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3V5a2 2 0 0 1 2-2zm0 2v2h6V5zm-5 7v7h16v-7h-6v2h-4v-2z"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zM5 9v11h14V9zm2 2h4v3H7zm6 0h4v3h-4zm-6 5h4v2H7z"/></svg>',
   research: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 2h6v2h-1v5.3l5.6 9.5A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.2L10 9.3V4H9zm-1.6 15h9.2l-2.4-4H9.8z"/></svg>',
   goals: '<svg viewBox="0 0 24 24" class="ico"><path d="M6 3h12v2h3v3a4 4 0 0 1-4 4h-.3A6 6 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A6 6 0 0 1 7.3 12H7a4 4 0 0 1-4-4V5h3zm-1 4v1a2 2 0 0 0 1.4 1.9A6 6 0 0 1 6 8V7zm14 0h-1v1a6 6 0 0 1-.4 1.9A2 2 0 0 0 19 8z"/></svg>',
   play: '<svg viewBox="0 0 24 24" class="ico"><path d="M8 5l12 7-12 7z"/></svg>',
@@ -185,7 +219,7 @@ const CATEGORIES: Array<{ id: Category; label: string }> = [
 ];
 
 export function categoryOf(item: TrayItem): Category {
-  if (item === 'path' || item === 'land' || item === 'bulldoze') return 'paths';
+  if (item === 'path' || item === 'land' || item === 'bulldoze' || item === 'beach') return 'paths';
   return BUILDINGS[item].family as Category;
 }
 
@@ -286,7 +320,14 @@ export class Hud {
           </div>
         </div>
         <div class="pane" data-pane="plan" hidden>
-          <div class="cards plan-cards" data-plan-cards></div>
+          <div class="bviews" role="tablist">
+            <button data-bview="finances">Finances</button>
+            <button data-bview="plan" class="on">Plan</button>
+            <button data-bview="people">People</button>
+          </div>
+          <div class="bview" data-bv="finances" hidden></div>
+          <div class="bview" data-bv="plan"><div class="cards plan-cards" data-plan-cards></div></div>
+          <div class="bview" data-bv="people" hidden></div>
         </div>
         <div class="pane" data-pane="research" hidden>
           <div class="cards">
@@ -300,7 +341,7 @@ export class Hud {
         <button data-dock="build">${UI.build}<span>Build</span></button>
         <button data-dock="guests">${UI.guests}<span>Guests</span><b class="dot" data-badge></b></button>
         <button class="play" data-play aria-label="Pause">${UI.pause}</button>
-        <button data-dock="plan">${UI.plan}<span>Plan</span></button>
+        <button data-dock="plan">${UI.plan}<span>Business</span></button>
         <b class="dot ok" data-rbadge hidden></b>
         <button data-dock="goals" data-goals>${UI.goals}<span>Goals</span></button>
       </nav>
@@ -344,6 +385,9 @@ export class Hud {
       h.onSpeed(next);
     });
     q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
+    for (const b of root.querySelectorAll<HTMLElement>('[data-bview]'))
+      b.addEventListener('click', () => this.setBusinessView(b.dataset.bview as 'finances' | 'plan' | 'people'));
+    this.bindPeople(h);
     q('[data-plan-cards]').addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       const slot = t.closest<HTMLElement>('[data-slot]');
@@ -387,13 +431,13 @@ export class Hud {
     });
 
     const cardsEl = q<HTMLElement>('[data-cards]');
-    const items: TrayItem[] = ['path', 'land', 'bulldoze', ...BUILDING_KINDS];
+    const items: TrayItem[] = ['path', 'land', 'beach', 'bulldoze', ...BUILDING_KINDS.filter((k) => !BUILDINGS[k].auto)];
     for (const item of items) {
       const b = document.createElement('button');
       b.className = 'card';
       b.dataset.cat = categoryOf(item);
-      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : item === 'bulldoze' ? 'Bulldoze' : BUILDINGS[item].name;
-      const price = item === 'path' ? `${PATH_COST}` : item === 'land' ? '' : item === 'bulldoze' ? '150+' : fmt(BUILDINGS[item].cost);
+      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : item === 'bulldoze' ? 'Bulldoze' : item === 'beach' ? 'Beach area' : BUILDINGS[item].name;
+      const price = item === 'path' ? `${PATH_COST}` : item === 'land' ? '' : item === 'bulldoze' ? '150+' : item === 'beach' ? 'free' : fmt(BUILDINGS[item].cost);
       b.setAttribute('aria-label', name);
       b.title = name;
       b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="price">${UI.coin}<span data-price>${price}</span></span><span class="i" role="button" aria-label="About ${name}" tabindex="-1">${UI.info}</span><span class="lockmark">${UI.lock}</span>`;
@@ -575,6 +619,8 @@ export class Hud {
     let html: string;
     if (item === 'path') html = `<b>Footpath</b><p>Drag from an existing path. Guests walk on paths, and every building must touch one.</p><dl><dt>Cost</dt><dd>${UI.coin}${PATH_COST} a tile</dd></dl>`;
     else if (item === 'land') html = `<b>Buy land</b><p>Tap a plot next to your land. Bigger plots cost more, and each one costs more than the last.</p>`;
+    else if (item === 'beach')
+      html = `<b>Beach area</b><p>Mark your sand as beach. Beach buildings (lifeguard tower, changing rooms, umbrellas…) go on it, inland ones stay off it. Guests come for fun and comfort if a path touches it; a lifeguard on duty matters.</p>`;
     else if (item === 'bulldoze')
       html = `<b>Bulldoze</b><p>Clear a tile: buildings and paths give half their cost back; jungle (${UI.coin}150) and rock (${UI.coin}400) become grass. Landmarks stay.</p>`;
     else {
@@ -728,6 +774,164 @@ export class Hud {
       })
       .join('');
     this.root.querySelector('[data-research-cards]')!.innerHTML = html;
+  }
+
+  // ---------- business: finances and people (Pass 5) ----------
+
+  businessView: 'finances' | 'plan' | 'people' = 'plan';
+  private pickedWorker: number | null = null;
+
+  setBusinessView(v: 'finances' | 'plan' | 'people'): void {
+    this.businessView = v;
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-bview]')) b.classList.toggle('on', b.dataset.bview === v);
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-bv]')) el.hidden = el.dataset.bv !== v;
+    this.sheet.classList.toggle('tall', v !== 'plan');
+    this.onBusinessView?.(v);
+  }
+
+  /** Set by the game: refresh the view that just opened. */
+  onBusinessView: ((v: 'finances' | 'plan' | 'people') => void) | null = null;
+
+  setFinances(d: FinanceData): void {
+    const el = this.root.querySelector<HTMLElement>('[data-bv="finances"]')!;
+    if (!d.months.length) {
+      el.innerHTML = '<p class="empty">The books open at the end of your first month.</p>';
+      return;
+    }
+    const total = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a + b, 0);
+    const max = Math.max(1, ...d.months.map((m) => Math.max(total(m.revenue), total(m.expenses))));
+    const bars = d.months
+      .map((m) => {
+        const rev = total(m.revenue);
+        const exp = total(m.expenses);
+        const seg = (r: Record<string, number>, cls: string) =>
+          Object.entries(r)
+            .filter(([, v]) => v > 0)
+            .map(([k, v]) => `<i class="${cls} ${k}" style="height:${((v / max) * 100).toFixed(1)}%" title="${k}: ${fmt(v)}"></i>`)
+            .join('');
+        return `<div class="fmonth"><div class="fbars"><div class="fbar rev">${seg(m.revenue, 'r')}</div><div class="fbar exp">${seg(m.expenses, 'e')}</div></div><b class="${rev - exp < 0 ? 'neg' : ''}">${rev - exp >= 0 ? '+' : '−'}${fmt(Math.abs(rev - exp))}</b><small>${m.label}</small></div>`;
+      })
+      .join('');
+    const last = d.months[d.months.length - 1];
+    const row = (r: Record<string, number>) =>
+      Object.entries(r)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `<span><i class="dot-${k}"></i>${k} <b>${fmt(v)}</b></span>`)
+        .join('');
+    el.innerHTML = `<div class="fchart">${bars}</div>
+      <div class="flegend"><p><b>Revenue</b> ${row(last.revenue)}</p><p><b>Expenses</b> ${row(last.expenses)}</p><small>Last month: ${last.label}</small></div>`;
+  }
+
+  setPeople(d: PeopleData): void {
+    const stars = (n: number) => '★'.repeat(n) + '☆'.repeat(3 - n);
+    const roles = ROLES.map((r) => `<button data-prole="${r}" class="${r === d.role ? 'on' : ''}">${ROLE_NAMES[r]}</button>`).join('');
+    const workers = d.workers.length
+      ? d.workers
+          .map(
+            (w) => `<div class="worker ${this.pickedWorker === w.id ? 'picked' : ''}" data-worker="${w.id}" tabindex="0" role="button" aria-label="${w.name}, drag onto a job">
+              <b>${w.name}</b><span class="stars">${stars(w.skill)}</span><small>${w.wage ? `${UI.coin}${fmt(w.wage)}/mo` : 'no wage'}${w.busy ? ` · ${w.busy}` : ''}</small>
+              <button class="fire" data-fire="${w.id}" aria-label="Let ${w.name} go">✕</button>
+            </div>`,
+          )
+          .join('')
+      : `<p class="empty">No ${ROLE_NAMES[d.role].toLowerCase()} staff yet.</p>`;
+    const cands = d.candidates
+      ? `<div class="cands">${d.candidates
+          .map(
+            (c, i) => `<div class="cand"><b>${c.name}</b><span class="stars">${stars(c.skill)}</span><small>${UI.coin}${fmt(c.wage)} a month</small><button data-hire="${i}">Hire</button></div>`,
+          )
+          .join('')}</div>`
+      : '';
+    let jobs = '';
+    if (d.coverage) jobs = `<p class="cover">${d.coverage}</p>`;
+    if (d.shifts)
+      jobs = d.shifts.length
+        ? `<table class="shifts"><thead><tr><th></th>${SLOTS.map((sl) => `<th>${SLOT_NAMES[sl]}</th>`).join('')}</tr></thead><tbody>${d.shifts
+            .map(
+              (row) =>
+                `<tr><th>${row.label}</th>${SLOTS.map((sl) => {
+                  const c = row.cells[sl];
+                  if (!c.open) return `<td class="closed">${c.note ?? '—'}</td>`;
+                  const target = `shift:${sl}:${row.task}`;
+                  return `<td class="drop ${c.who ? 'filled' : ''}" data-drop="${target}">${c.who ? `${c.who}<button class="unassign" data-unassign="${target}" aria-label="Clear">✕</button>` : '<span>Drop here</span>'}</td>`;
+                }).join('')}</tr>`,
+            )
+            .join('')}</tbody></table><p class="cover">One job per shift: a guide on the boat in the morning can lead the hike in the afternoon. Sessions without a guide don't run.</p>`
+        : '<p class="empty">Plan an activity session, or build the Welcome Center, to give operations staff something to do.</p>';
+    if (d.posts)
+      jobs = d.posts.length
+        ? `<div class="posts">${d.posts
+            .map(
+              (p) => `<div class="drop post ${p.who ? 'filled' : ''}" data-drop="post:${p.id}"><b>${p.label}</b>${p.who ? `<span>${p.who}</span><button class="unassign" data-unassign="post:${p.id}" aria-label="Clear">✕</button>` : '<span>Drop a lifeguard here</span>'}</div>`,
+            )
+            .join('')}</div>`
+        : '<p class="empty">Pools and beaches need lifeguards. You have none yet.</p>';
+    const el = this.root.querySelector<HTMLElement>('[data-bv="people"]')!;
+    el.innerHTML = `<div class="proles" role="tablist">${roles}</div>
+      <p class="job">${ROLE_JOBS[d.role]}</p>
+      <div class="workers">${workers}<button class="hire" data-offer>+ Hire new</button></div>${cands}${jobs}`;
+  }
+
+  /** Drag a worker card onto a job, or tap the card and then the job. */
+  private bindPeople(h: HudHandlers): void {
+    const el = this.root.querySelector<HTMLElement>('[data-bv="people"]')!;
+    let drag: { id: number; sx: number; sy: number; ghost: HTMLElement | null } | null = null;
+    el.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const role = t.closest<HTMLElement>('[data-prole]');
+      if (role) return h.onPeopleRole(role.dataset.prole as Role);
+      if (t.closest('[data-offer]')) return h.onStaffOffer(this.currentRole());
+      const hire = t.closest<HTMLElement>('[data-hire]');
+      if (hire) return h.onHire(this.currentRole(), Number(hire.dataset.hire));
+      const fire = t.closest<HTMLElement>('[data-fire]');
+      if (fire) return h.onFire(Number(fire.dataset.fire));
+      const un = t.closest<HTMLElement>('[data-unassign]');
+      if (un) return h.onAssign(null, un.dataset.unassign!);
+      const drop = t.closest<HTMLElement>('[data-drop]');
+      if (drop && this.pickedWorker !== null) {
+        const id = this.pickedWorker;
+        this.pickedWorker = null;
+        return h.onAssign(id, drop.dataset.drop!);
+      }
+    });
+    el.addEventListener('pointerdown', (e) => {
+      const card = (e.target as HTMLElement).closest<HTMLElement>('[data-worker]');
+      if (!card || (e.target as HTMLElement).closest('[data-fire]')) return;
+      drag = { id: Number(card.dataset.worker), sx: e.clientX, sy: e.clientY, ghost: null };
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      if (!drag.ghost && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 8) {
+        const src = el.querySelector<HTMLElement>(`[data-worker="${drag.id}"]`);
+        drag.ghost = document.createElement('div');
+        drag.ghost.className = 'worker-ghost';
+        drag.ghost.textContent = src?.querySelector('b')?.textContent ?? '';
+        this.root.appendChild(drag.ghost);
+      }
+      if (drag.ghost) {
+        drag.ghost.style.transform = `translate(${e.clientX - 40}px, ${e.clientY - 24}px)`;
+        for (const d of el.querySelectorAll('.drop.over')) d.classList.remove('over');
+        document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-drop]')?.classList.add('over');
+      }
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      if (!d.ghost) {
+        // A tap picks the worker; the next tapped job gets them.
+        this.pickedWorker = this.pickedWorker === d.id ? null : d.id;
+        for (const w of el.querySelectorAll<HTMLElement>('[data-worker]')) w.classList.toggle('picked', Number(w.dataset.worker) === this.pickedWorker);
+        return;
+      }
+      d.ghost.remove();
+      const drop = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('[data-drop]');
+      if (drop) h.onAssign(d.id, drop.dataset.drop!);
+    });
+  }
+
+  private currentRole(): Role {
+    return (this.root.querySelector<HTMLElement>('[data-prole].on')?.dataset.prole as Role) ?? 'maintenance';
   }
 
   /** The Plan sheet: each activity hub with its three slots. */

@@ -23,7 +23,8 @@ are deliberately left rough.
 | Pass 1 | Depth and scenarios | **Done** |
 | Pass 2 | Balance | **Done** |
 | Pass 3 | Graphics, visuals and GUI | **Done** (Lagoon Glass) |
-| Pass 4 | Islands, ratings, activities and the campaign | **In progress** (steps below) |
+| Pass 4 | Islands, ratings, activities and the campaign | **Done** |
+| Pass 5 | Operations: staff, beach, welcome, moving and bulldozing | **First cut done** |
 
 ---
 
@@ -274,3 +275,34 @@ campaign map with shared research ties the missions together.
 ### Missions
 
 The Caribbean's nine missions, their goals and how they unlock are in [MISSIONS.md](MISSIONS.md).
+
+## Pass 5 — Running the resort
+
+- **Move and bulldoze.** Any building can be moved from its panel for 10% of what was spent on
+  it (at least 100), keeping floors and wear; a moved hub's route is dropped. The bulldozer
+  removes buildings and paths (half back) and clears jungle (150) and rock (400) to grass;
+  landmarks stay.
+- **Maintenance in words.** Low, Medium or High: how fast things wear, described without
+  numbers. Upkeep changes with it in the monthly books.
+- **Staff.** Three teams, hired from three candidates each time (skill vs wage), paid monthly;
+  every resort starts with a free handyman.
+  - *Maintenance* keeps up with a number of buildings each (6, 9 or 13 by skill). Short-handed,
+    things wear up to 2.5 times as fast and rooms aren't as clean (Lodging).
+  - *Operations* work morning, afternoon and evening shifts: the greeting team (mornings, at
+    the Welcome Center) and the guides for activity sessions. One job per shift; a session
+    without a guide doesn't run. A better guide makes a better session.
+  - *Security* are lifeguards, posted at a pool or a lifeguard tower for the whole day.
+- **Business tab** (replaces Plan): Finances (revenue and expenses for the last six months),
+  Plan (sessions per slot), People (hire, let go, and drag people onto shifts and posts, or tap
+  a person then a job).
+- **Welcome Center.** Placed next to the pier in every resort, fixed. Free welcome drinks (3 a
+  guest) and flower necklaces (2 a guest) are checkboxes in its panel; with someone on the
+  morning greeting shift, arrivals wait more patiently and remember the welcome.
+- **Beach area.** Mark owned sand as beach (free) with the Beach area tool. Beach buildings go
+  only on it: Lifeguard Tower, Changing Rooms, Lockers, Towel Rental, Beach Food Post, Beach
+  Club (research), umbrellas and other beach decor; inland buildings stay off it. A path must
+  touch it. Guests go there for fun and comfort and judge it (Amenities) by the lifeguard on
+  duty, the services, how pretty it is and how crowded.
+
+Next: lifeguards for pools as a hard rule in later archipelagos, staff morale and training,
+and theme decor and activities per archipelago.

@@ -60,7 +60,9 @@ describe('decoration appeal', () => {
   it('decor needs no path, beach items need sand, and decor never blocks removing a path', () => {
     const w = island();
     expect(w.placeBuilding('palmTree', 1, 1, 0).ok).toBe(true);
-    // The prototype map has no sand, so beach items are allowed anywhere there.
+    // Beach items go on the beach area (Pass 5); on the prototype map any land can be tagged.
+    expect(w.placeBuilding('beachChairs', 1, 3, 0)).toEqual({ ok: false, reason: 'Goes on the beach area' });
+    expect(w.setBeach(1, 3, true).ok).toBe(true);
     expect(w.placeBuilding('beachChairs', 1, 3, 0).ok).toBe(true);
     w.placePath(2, 7);
     w.placeBuilding('bench', 2, 6, 0);

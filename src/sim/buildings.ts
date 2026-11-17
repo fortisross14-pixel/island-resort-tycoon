@@ -36,6 +36,15 @@ export type BuildingKind =
   | 'yogaDeck'
   | 'kayakRental'
   | 'excursionPier'
+  // Pass 5: the Welcome Center (placed for you) and beach buildings.
+  | 'welcomeCenter'
+  | 'lifeguardTower'
+  | 'changingRooms'
+  | 'lockers'
+  | 'towelRental'
+  | 'beachFoodPost'
+  | 'beachClub'
+  | 'umbrella'
   // Decor (Pass 4): small items that make the resort prettier.
   | 'palmTree'
   | 'bench'
@@ -106,6 +115,21 @@ export interface BuildingDef {
   rating?: RatingCategory;
   /** Part of the island: can't be moved or bulldozed (the Welcome Center). */
   fixed?: boolean;
+  /** Placed for you; not in the build sheet. */
+  auto?: boolean;
+  /**
+   * Where it may stand (Pass 5): 'beach' on beach-area tiles only, 'any' anywhere, otherwise
+   * inland (never on the beach area).
+   */
+  zone?: 'beach' | 'any';
+  /** Serves the area around it rather than taking visitors: needs no path of its own. */
+  passive?: boolean;
+}
+
+/** Inland unless it says otherwise; decor goes anywhere. */
+export function zoneOf(kind: BuildingKind): 'beach' | 'inland' | 'any' {
+  const d = BUILDINGS[kind];
+  return d.zone ?? (d.family === 'decor' || d.coast ? 'any' : 'inland');
 }
 
 /** Which resort rating a building feeds. */
@@ -116,7 +140,8 @@ export function ratingOf(kind: BuildingKind): RatingCategory {
 }
 
 function decor(kind: BuildingKind, name: string, cost: number, quality: Quality, blurb: string, def: DecorDef): BuildingDef {
-  return { kind, name, family: 'decor', w: 1, h: 1, cost, upkeep: Math.max(1, Math.round(cost * 0.01)), blurb, quality, unlock: 0, decor: def };
+  // Beach decor (umbrellas, loungers, surfboards) stands on the beach area (Pass 5).
+  return { kind, name, family: 'decor', w: 1, h: 1, cost, upkeep: Math.max(1, Math.round(cost * 0.01)), blurb, quality, unlock: 0, decor: def, ...(def.sand ? { zone: 'beach' as const } : {}) };
 }
 
 export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
@@ -467,6 +492,104 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     coast: true,
     rating: 'activities',
   },
+  welcomeCenter: {
+    kind: 'welcomeCenter',
+    name: 'Welcome Center',
+    family: 'services',
+    w: 2,
+    h: 1,
+    cost: 0,
+    upkeep: 15,
+    blurb: 'Greets arrivals at the pier',
+    quality: 1,
+    unlock: 0,
+    fixed: true,
+    auto: true,
+  },
+  lifeguardTower: {
+    kind: 'lifeguardTower',
+    name: 'Lifeguard Tower',
+    family: 'services',
+    w: 1,
+    h: 1,
+    cost: 600,
+    upkeep: 10,
+    blurb: 'Needs a lifeguard (Security) · beach',
+    quality: 1,
+    unlock: 0,
+    zone: 'beach',
+    passive: true,
+  },
+  changingRooms: {
+    kind: 'changingRooms',
+    name: 'Changing Rooms',
+    family: 'services',
+    w: 2,
+    h: 1,
+    cost: 900,
+    upkeep: 12,
+    blurb: 'Showers and cabins · beach',
+    quality: 1,
+    unlock: 0,
+    zone: 'beach',
+    passive: true,
+  },
+  lockers: {
+    kind: 'lockers',
+    name: 'Lockers',
+    family: 'services',
+    w: 1,
+    h: 1,
+    cost: 500,
+    upkeep: 6,
+    blurb: 'Safe for valuables · 2 a visit · beach',
+    quality: 1,
+    unlock: 0,
+    zone: 'beach',
+    passive: true,
+  },
+  towelRental: {
+    kind: 'towelRental',
+    name: 'Towel Rental',
+    family: 'services',
+    w: 1,
+    h: 1,
+    cost: 400,
+    upkeep: 6,
+    blurb: 'Towels and loungers · 3 a visit · beach',
+    quality: 1,
+    unlock: 0,
+    zone: 'beach',
+    passive: true,
+  },
+  beachFoodPost: {
+    kind: 'beachFoodPost',
+    name: 'Beach Food Post',
+    family: 'food',
+    w: 1,
+    h: 1,
+    cost: 1100,
+    upkeep: 15,
+    blurb: 'Snacks and juice on the sand · beach',
+    quality: 1,
+    unlock: 0,
+    zone: 'beach',
+  },
+  beachClub: {
+    kind: 'beachClub',
+    name: 'Beach Club',
+    family: 'fun',
+    w: 3,
+    h: 2,
+    cost: 7000,
+    upkeep: 80,
+    blurb: 'Daybeds, drinks and music · beach',
+    quality: 3,
+    unlock: 2,
+    zone: 'beach',
+    noisy: true,
+  },
+  umbrella: decor('umbrella', 'Beach Umbrella', 80, 1, 'Shade on the sand · beach', { appeal: 4, radius: 1, sand: true }),
   palmTree: decor('palmTree', 'Palm Tree', 150, 1, 'Shade and a postcard look', { appeal: 6, radius: 2 }),
   bench: decor('bench', 'Bench', 100, 1, 'A place to sit by the path', { appeal: 3, radius: 1 }),
   lampPost: decor('lampPost', 'Lamp Post', 180, 1, 'Warm light along the paths', { appeal: 4, radius: 2 }),

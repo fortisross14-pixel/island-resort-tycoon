@@ -24,6 +24,9 @@ import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './r
 
 /** Experience a Research Office adds each month once research lives on the home screen. */
 const OFFICE_XP = 2;
+/** Welcome Center extras, per person. */
+const WELCOME_DRINK = 3;
+const WELCOME_LEI = 2;
 import { categoryRating, rating, reviewText, starsFor, type Memory, type Review } from './reviews';
 import {
   AppealMap,
@@ -243,7 +246,11 @@ export type Purpose = 'room' | 'rest' | 'food' | 'activity';
 export type Goal =
   | { kind: 'building'; id: number; purpose: Purpose }
   | { kind: 'dock' }
-  | { kind: 'tile'; tile: Tile };
+  | { kind: 'tile'; tile: Tile }
+  /** A trip to the beach area (Pass 5): to the path beside it, onto the sand, and back. */
+  | { kind: 'beach' }
+  | { kind: 'beachSpot' }
+  | { kind: 'leaveBeach' };
 
 /**
  * arriving: walking off the boat (to the queue, or to the island once checked in)
@@ -251,7 +258,7 @@ export type Goal =
  * waiting:  on the pier waiting for the ferry home
  * inline:   standing in line outside a busy venue
  */
-export type GuestState = 'arriving' | 'queued' | 'walking' | 'inline' | 'inside' | 'waiting' | 'boarding' | 'gone';
+export type GuestState = 'arriving' | 'queued' | 'walking' | 'inline' | 'inside' | 'lounging' | 'waiting' | 'boarding' | 'gone';
 
 /** One party: a backpacker, or a couple sharing a room. */
 export interface Guest {
@@ -332,6 +339,10 @@ export interface DayStats {
   upkeep: number;
   /** Research points earned today (review stars and offices). */
   research: number;
+  /** Welcome drinks and flowers handed out today (Pass 5). */
+  welcome?: number;
+  /** Towel and locker takings today. */
+  beach?: number;
 }
 
 /** A session in the day plan: an activity hub in a slot (Pass 4 step 3). */
@@ -432,6 +443,7 @@ export interface SimSnapshot {
   candidates: Partial<Record<Role, Candidate[]>>;
   nextWorkerId: number;
   books: MonthBooks[];
+  welcome?: { drinks: boolean; leis: boolean };
   /** The day plan, prices per hub, and today's sessions (Pass 4 step 3). */
   plan: PlanEntry[];
   activityPrices: Record<number, PriceStep>;
@@ -530,6 +542,8 @@ export class Sim {
   private nextWorkerId = 2;
   /** The last 24 months of books. */
   books: MonthBooks[] = [];
+  /** Welcome Center extras for every arrival (Pass 5). */
+  welcome = { drinks: false, leis: false };
   /** Decoration appeal per tile. */
   readonly appeal: AppealMap;
   /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
@@ -852,6 +866,7 @@ export class Sim {
       t.upkeep += up;
     }
     if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
+    if (t.welcome) costs.push({ buildingId: this.welcomeCenter?.id ?? null, name: 'Welcome drinks and flowers', amount: -t.welcome, detail: 'for arrivals' });
     const wages = this.staff.reduce((s, w) => s + w.wage, 0);
     if (wages) {
       this.world.earn(-wages);
@@ -910,7 +925,7 @@ export class Sim {
       day: this.day,
       income,
       costs,
-      profit: t.roomIncome + t.spending - t.supplies - t.upkeep - investorCut - wages,
+      profit: t.roomIncome + t.spending - t.supplies - t.upkeep - investorCut - wages - (t.welcome ?? 0),
       stats: { ...t },
       checkingOut,
       reviews,
@@ -933,7 +948,7 @@ export class Sim {
       upkeep: t.upkeep,
       wages,
       supplies: t.supplies,
-      other: investorCut,
+      other: investorCut + (t.welcome ?? 0),
     });
     if (this.books.length > 24) this.books.shift();
     // Bankruptcy is never instant: after three red days an investor offers a lifeline.
@@ -1076,6 +1091,90 @@ export class Sim {
     if (!b || !def) return 0;
     const q = routeQuality(this.world, this.world.routeOf(hubId), def, this.world.landmarks, this.appeal.at(b.x, b.y));
     return Math.max(0, q - wearPenalty(conditionOf(b)));
+  }
+
+  // ---------- welcome center and beach (Pass 5) ----------
+
+  get welcomeCenter(): Building | undefined {
+    return this.world.buildings.find((b) => b.kind === 'welcomeCenter');
+  }
+
+  /** Greeting needs the Welcome Center and someone on the morning greeting shift. */
+  get greetingActive(): boolean {
+    return !!this.welcomeCenter && !!this.greeter;
+  }
+
+  /** Drinks, flowers and a greeting for a party that has just been given a room. */
+  private welcomeParty(g: Guest): void {
+    if (!this.welcomeCenter) return;
+    const sc = this.scores(g);
+    let cost = 0;
+    if (this.welcome.drinks) {
+      cost += WELCOME_DRINK * g.size;
+      g.satisfaction = Math.min(100, g.satisfaction + 4);
+      addScore(sc, 'amenities', 82);
+      this.remember(g, this.welcomeCenter.id, 5, 'a welcome drink on arrival');
+    }
+    if (this.welcome.leis) {
+      cost += WELCOME_LEI * g.size;
+      addScore(sc, 'decor', 88);
+      this.remember(g, this.welcomeCenter.id, 5, 'flower necklaces at the pier');
+    }
+    if (this.greetingActive) {
+      g.satisfaction = Math.min(100, g.satisfaction + 3);
+      addScore(sc, 'amenities', 76);
+      this.remember(g, this.welcomeCenter.id, 4, 'such a warm welcome at the pier');
+    }
+    if (cost) {
+      this.world.earn(-cost);
+      this.today.welcome = (this.today.welcome ?? 0) + cost;
+    }
+  }
+
+  /** The beach: how good a few hours on the sand are (0–100). */
+  beachQuality(): number {
+    const w = this.world;
+    const tiles = w.beachTiles();
+    if (!tiles.length) return 0;
+    const has = (k: string) => w.buildings.some((b) => b.kind === k);
+    let q = 45;
+    q += this.beachGuarded ? 12 : -12;
+    if (has('changingRooms')) q += 8;
+    if (has('lockers')) q += 5;
+    if (has('towelRental')) q += 6;
+    if (has('beachFoodPost') || has('beachClub')) q += 4;
+    q += (tiles.reduce((s2, t) => s2 + this.appeal.at(t.x, t.y), 0) / tiles.length) * 0.25;
+    const loungers = this.guests.filter((g) => g.state === 'lounging').reduce((n, g) => n + g.size, 0);
+    const crowd = loungers / tiles.length;
+    if (crowd > 0.6) q -= (crowd - 0.6) * 40;
+    return Math.max(0, Math.min(95, q));
+  }
+
+  /** A lifeguard on duty at one of the beach's towers. */
+  get beachGuarded(): boolean {
+    return this.world.buildings.some((b) => b.kind === 'lifeguardTower' && !!this.guardAt(b.id));
+  }
+
+  /** On the sand: pay for towels and lockers, rest, have fun, and judge the beach. */
+  private enjoyBeach(g: Guest): void {
+    const w = this.world;
+    const q = this.beachQuality();
+    let pay = 0;
+    if (w.buildings.some((b) => b.kind === 'towelRental')) pay += 3 * g.size;
+    if (w.buildings.some((b) => b.kind === 'lockers')) pay += 2 * g.size;
+    pay = Math.min(pay, g.wallet);
+    if (pay) {
+      g.wallet -= pay;
+      this.world.earn(pay);
+      this.today.spending += pay;
+      this.today.beach = (this.today.beach ?? 0) + pay;
+    }
+    g.needs.fun = Math.min(100, g.needs.fun + 35);
+    g.needs.comfort = Math.min(100, g.needs.comfort + 15);
+    addScore(this.scores(g), 'amenities', q, 2);
+    if (!this.beachGuarded) this.remember(g, null, -5, 'nobody was watching the swimmers on the beach');
+    else if (q >= 70) this.remember(g, null, 7, 'the beach was paradise');
+    g.thought = q >= 70 ? 'Paradise.' : q >= 50 ? 'Nice to be on the sand.' : 'Not much of a beach.';
   }
 
   // ---------- staff (Pass 5) ----------
@@ -1357,7 +1456,8 @@ export class Sim {
       budget: Math.round(this.rng.range(...def.budget) / 5) * 5,
       tier: def.tier,
       wishes,
-      patience: PATIENCE_SECONDS * (this.hasFrontDesk ? 1.5 : 1) * (def.impatient ? 0.5 : 1),
+      // A greeting team at the pier keeps people patient a little longer (Pass 5).
+      patience: PATIENCE_SECONDS * (this.hasFrontDesk ? 1.5 : 1) * (def.impatient ? 0.5 : 1) * (this.greetingActive ? 1.3 : 1),
       satisfaction: 50,
       roomScore: 50,
       needs: {
@@ -1441,6 +1541,16 @@ export class Sim {
         g.timer -= dt;
         if (g.timer <= 0) this.exitBuilding(g);
         return;
+      case 'lounging':
+        g.timer -= dt;
+        if (g.timer <= 0) {
+          // Back to the path they came from.
+          g.state = 'walking';
+          g.goal = { kind: 'leaveBeach' };
+          g.waypoints = g.tile ? [{ x: g.tile.x + 0.5, z: g.tile.y + 0.5 }] : [];
+          g.wp = 0;
+        }
+        return;
       case 'queued':
         g.patience -= dt;
         if (g.patience <= 0) this.giveUp(g);
@@ -1517,6 +1627,27 @@ export class Sim {
     if (goal.kind === 'dock') {
       g.state = 'waiting';
       return;
+    }
+    if (goal.kind === 'beach') {
+      // Step off the path onto a free spot on the sand nearby.
+      const at = g.tile;
+      const spots = this.world.beachTiles().filter((t) => !this.world.buildingAt(t.x, t.y));
+      if (!at || !spots.length) return this.decide(g);
+      spots.sort((a, b) => Math.abs(a.x - at.x) + Math.abs(a.y - at.y) - (Math.abs(b.x - at.x) + Math.abs(b.y - at.y)));
+      const spot = spots[Math.floor(this.rng.next() * Math.min(spots.length, 8))];
+      g.goal = { kind: 'beachSpot' };
+      g.waypoints = [{ x: spot.x + this.rng.range(0.25, 0.75), z: spot.y + this.rng.range(0.25, 0.75) }];
+      g.wp = 0;
+      return;
+    }
+    if (goal.kind === 'beachSpot') {
+      g.state = 'lounging';
+      g.timer = this.rng.range(10, 16);
+      return this.enjoyBeach(g);
+    }
+    if (goal.kind === 'leaveBeach') {
+      g.state = 'walking';
+      return this.decide(g);
     }
     if (goal.kind === 'tile') {
       g.needs.fun = Math.min(100, g.needs.fun + STROLL_FUN);
@@ -1721,6 +1852,7 @@ export class Sim {
     g.roomScore = score;
     addScore(this.scores(g), 'lodging', score - wearPenalty(conditionOf(room)));
     addScore(this.scores(g), 'decor', this.appeal.at(room.x, room.y));
+    this.welcomeParty(g);
     if (GUEST_TYPES[g.type].impatient && !this.hasFrontDesk) {
       g.satisfaction = Math.max(0, g.satisfaction - 10);
       this.remember(g, null, -8, 'check-in took forever');
@@ -1854,6 +1986,19 @@ export class Sim {
       out.push({ goal: { kind: 'building', id: room.id, purpose: 'rest' }, utility: (deficit * 0.6) / (1 + d / 10) });
     }
 
+    // The beach (Pass 5): fun and comfort, if a path reaches it.
+    if (from) {
+      const entrances = this.world.beachEntrances();
+      if (entrances.length) {
+        const d = this.paths.distance('beach', entrances, from);
+        if (d < UNREACHABLE) {
+          const q = this.beachQuality();
+          const u = ((100 - m.fun) * 0.35 + (100 - m.comfort) * 0.15 + 6) * (0.6 + q / 200);
+          out.push({ goal: { kind: 'beach' }, utility: u / (1 + d / 8) });
+        }
+      }
+    }
+
     const tiles = this.world.pathTiles();
     // A stroll is the free fallback for fun: always possible, but less fun than a venue.
     out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.2 + 4 });
@@ -1868,6 +2013,9 @@ export class Sim {
 
   /** Turn a goal into waypoints from the guest's current tile. */
   private plan(g: Guest, goal: Goal, retried = false): void {
+    // On the sand they walk straight; nothing to route.
+    if (goal.kind === 'beachSpot' || goal.kind === 'leaveBeach') return;
+    if (goal.kind === 'beach' && !this.world.beachReached()) return retried ? this.strand(g) : this.decide(g);
     // A stroll target that is no longer a path is simply forgotten.
     if (goal.kind === 'tile' && !this.world.isPath(goal.tile.x, goal.tile.y)) {
       if (retried) goal = { kind: 'dock' };
@@ -1889,6 +2037,9 @@ export class Sim {
     } else if (goal.kind === 'dock') {
       key = 'dock';
       goals = [this.world.dock];
+    } else if (goal.kind === 'beach') {
+      key = 'beach';
+      goals = this.world.beachEntrances();
     } else {
       key = `t${goal.tile.x},${goal.tile.y}`;
       goals = [goal.tile];
@@ -1993,6 +2144,7 @@ export class Sim {
       candidates: structuredClone(this.candidates),
       nextWorkerId: this.nextWorkerId,
       books: structuredClone(this.books),
+      welcome: { ...this.welcome },
       plan: this.dayPlan.map((p) => ({ ...p })),
       activityPrices: { ...this.activityPrices },
       trips: structuredClone(this.trips),
@@ -2024,6 +2176,7 @@ export class Sim {
     this.candidates = structuredClone(s.candidates);
     this.nextWorkerId = s.nextWorkerId;
     this.books = structuredClone(s.books);
+    this.welcome = s.welcome ? { ...s.welcome } : { drinks: false, leis: false };
     this.maintenance = s.maintenance;
     this.dayPlan = s.plan.map((p) => ({ ...p }));
     this.activityPrices = { ...s.activityPrices };
