@@ -40,6 +40,8 @@ export interface Match {
 export interface Matchable {
   tier: number;
   wishes: Wish[];
+  /** Nightly budget; compared with the room rate when given (M5). */
+  budget?: number;
 }
 
 export function accessOf(world: World, b: Building): Tile[] {
@@ -82,8 +84,11 @@ export function wishMet(paths: PathGraph, world: World, room: Building, wish: Wi
   }
 }
 
-/** Score 0–100 for putting a guest in a room; it becomes their starting satisfaction. */
-export function matchScore(paths: PathGraph, world: World, guest: Matchable, room: Building): Match {
+/**
+ * Score 0–100 for putting a guest in a room; it becomes their starting satisfaction.
+ * `rate` is the room's nightly rate, if known.
+ */
+export function matchScore(paths: PathGraph, world: World, guest: Matchable, room: Building, rate?: number): Match {
   const notes: MatchNote[] = [];
   let score = 60;
   const tier = ROOM_TIER[room.kind] ?? 1;
@@ -98,6 +103,15 @@ export function matchScore(paths: PathGraph, world: World, guest: Matchable, roo
     // Over-housing is fine for the guest but costs you money (M5: they pay their own rate).
     score += 10;
     notes.push({ ok: true, text: 'A treat for the budget' });
+  }
+  if (rate !== undefined && guest.budget !== undefined) {
+    if (rate > guest.budget) {
+      score -= 15;
+      notes.push({ ok: false, text: 'Too pricey for us' });
+    } else if (rate <= guest.budget * 0.7) {
+      score += 5;
+      notes.push({ ok: true, text: 'Great value' });
+    }
   }
   for (const w of guest.wishes) {
     const met = wishMet(paths, world, room, w);

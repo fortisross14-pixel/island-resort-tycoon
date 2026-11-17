@@ -5,6 +5,7 @@ import { Sim, TICK, type SimEvent, type SimSnapshot } from './sim/sim';
 import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
 import { InfoPanel } from './ui/panel';
+import { NightReportView } from './ui/report';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
@@ -56,6 +57,7 @@ export class Game {
   private ferryView: FerryView;
   private coinPops: CoinPops;
   private panel: InfoPanel;
+  private report: NightReportView;
   private speed: Speed = 1;
   private tickAcc = 0;
   private sinceSave = 0;
@@ -104,6 +106,18 @@ export class Game {
       onAutoAssign: () => this.autoAssign(),
     });
     this.panel = new InfoPanel(hudRoot, this.sim);
+    this.sim.pauseAtNight = true;
+    this.report = new NightReportView(hudRoot, {
+      onStartDay: () => this.startDay(),
+      onReview: (rv) => {
+        const b = this.world.buildings.find((x) => x.id === rv.buildingId);
+        if (!b) return;
+        const { w, h } = footprint(b.kind, b.rot);
+        this.stage.lookAt(b.x + w / 2, b.y + h / 2);
+        this.panel.showBuilding(b.id);
+      },
+    });
+    if (this.sim.night) this.report.show(this.sim.night);
     this.sim.on((e) => this.onSimEvent(e));
     this.world.onMoney(() => this.onMoneyChange());
     this.stage.onFrame((dt) => this.frame(dt));
@@ -142,6 +156,7 @@ export class Game {
     const popping = this.coinPops.update(dt * Math.max(this.speed, 1));
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
+    this.hud.setRating(this.sim.rating);
     const queue = this.sim.queue;
     this.hud.setQueue(queue);
     this.followQueue(queue.length);
@@ -174,13 +189,22 @@ export class Game {
         if (this.selectedGuest === e.guestId) this.selectNextGuest();
         else if (this.selectedGuest !== null) this.showRoomMarks();
         return;
-      case 'newDay': {
-        const y = e.yesterday;
-        this.hud.toast(`Day ${e.day} · yesterday ${y.arrived} arrived, ${y.turnedAway} turned away`, 'info');
+      case 'night':
+        this.selectGuest(null);
+        this.report.show(e.report);
         this.save();
         return;
-      }
+      case 'newDay':
+        this.hud.toast(`Day ${e.day}: the ferry arrives at 08:00`, 'info');
+        this.save();
+        return;
     }
+  }
+
+  private startDay(): void {
+    this.report.hide();
+    this.sim.startDay();
+    if (this.speed === 0) this.setSpeed(1);
   }
 
   // ---------- check-in (M3) ----------
@@ -331,6 +355,7 @@ export class Game {
     if (!window.confirm('Start a new island? Your current island will be lost.')) return;
     this.world.restore(new World().snapshot());
     this.sim.reset();
+    this.report.hide();
     this.history.clear();
     this.setTool({ type: 'none' });
     this.onWorldChange();
@@ -519,6 +544,7 @@ export class Game {
         e.preventDefault();
         return this.undo();
       }
+      if (e.key === 'Enter' && this.report.open) return this.startDay();
       if (e.key === ' ') {
         e.preventDefault();
         return this.setSpeed(this.speed === 0 ? 1 : 0);

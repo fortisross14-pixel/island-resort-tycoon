@@ -1,5 +1,5 @@
 import { BUILDINGS } from '../sim/buildings';
-import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, type PriceStep } from '../sim/needs';
+import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, roomRateOf, type PriceStep } from '../sim/needs';
 import { GUEST_TYPES, ROOMS_PER_BUILDING, type Guest, type Sim } from '../sim/sim';
 import type { Building } from '../sim/world';
 
@@ -42,9 +42,12 @@ export class InfoPanel {
     this.el.querySelector('.x')!.addEventListener('click', () => this.close());
     // Price buttons are re-rendered, so listen on the panel.
     this.el.addEventListener('click', (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-price]');
-      if (!btn || this.subject?.kind !== 'building') return;
-      this.sim.setPrice(this.subject.id, Number(btn.dataset.price) as PriceStep);
+      if (this.subject?.kind !== 'building') return;
+      const t = e.target as HTMLElement;
+      const price = t.closest<HTMLButtonElement>('[data-price]');
+      if (price) this.sim.setPrice(this.subject.id, Number(price.dataset.price) as PriceStep);
+      const rate = t.closest<HTMLButtonElement>('[data-rate]');
+      if (rate) this.sim.setRoomRate(Number(rate.dataset.tier), Number(rate.dataset.rate) as PriceStep);
       this.render();
     });
     root.appendChild(this.el);
@@ -132,6 +135,12 @@ export class InfoPanel {
   }
 
   private roomHtml(b: Building): string {
+    const tier = this.sim.roomTier(b);
+    const step = this.sim.roomRates[tier] ?? 2;
+    const rates = PRICE_STEPS.map(
+      (p, i) =>
+        `<button data-rate="${i}" data-tier="${tier}" class="${i === step ? 'on' : ''}"><span>${p.label}</span><b>${roomRateOf(tier, i as PriceStep)}</b></button>`,
+    ).join('');
     const lodgers = this.sim.guests.filter((g) => g.roomId === b.id);
     const rows = lodgers.length
       ? lodgers
@@ -139,7 +148,10 @@ export class InfoPanel {
           .join('')
       : '<li class="muted">Empty</li>';
     return `
+      <div class="prices" role="group" aria-label="Nightly rate per party, all tier ${tier} rooms">${rates}</div>
+      <p class="estimate">Nightly rate for every tier ${tier} room. Backpackers budget about 40–70, couples 90–140.</p>
       <dl>
+        <dt>Tonight</dt><dd>${coin}${lodgers.filter((g) => !g.leaving).reduce((sum, g) => sum + Math.min(this.sim.roomRate(b), g.budget), 0)} expected</dd>
         <dt>Rooms</dt><dd>${lodgers.length} of ${ROOMS_PER_BUILDING} taken</dd>
         <dt>Built</dt><dd>Day ${b.builtDay}</dd>
       </dl>

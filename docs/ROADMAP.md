@@ -19,8 +19,8 @@ are deliberately left rough.
 | M2 | Clock, ferry and walkers | **Done** |
 | M3 | Check-in | **Done** |
 | M4 | Needs and spending | **Done** |
-| M5 | Economy, night report and reviews | Next |
-| Pass 1 | Depth and scenarios | Planned |
+| M5 | Economy, night report and reviews | **Done** |
+| Pass 1 | Depth and scenarios | Next |
 | Pass 2 | Balance | Planned |
 | Pass 3 | Graphics, visuals and GUI | Planned |
 
@@ -108,16 +108,21 @@ Goal: money you can see.
 
 Not yet: Fun and Comfort have no venues of their own (the pool, gift shop and spa come in Pass 1).
 
-## M5 — Economy, night report and reviews
+## M5 — Economy, night report and reviews ✅
 
 Goal: one full day loop with consequences.
 
-- Evening: rooms charge their nightly rate; upkeep and supplies (about 30% of food revenue) are deducted
-- Night report: revenue by building, best and worst moments, new reviews, change in star rating
-- Departures at the end of a stay, with a review: 1–5 stars, one generated line and a pointer to the building
-- Tap a review to jump the camera to that building
-- Star rating from the rolling review average, which drives the next ferry's size
-- Balance check against the GDD targets: profitable by day 2, buildings pay back in 4–8 days when well placed
+- [x] At 23:00 every housed party pays the nightly rate (capped at its budget, with a mood hit if overpriced)
+- [x] Room rate: five steps per room tier, set from any room's panel; a rate above a party's budget lowers the match score
+- [x] Daily upkeep per building; supplies of 30% are taken from every food sale
+- [x] Night report: profit, income by building, costs, rating and its trend, guest counts, tomorrow's ferry size, best and worst moments, and the new reviews; the game waits until you start the next day (Enter works too)
+- [x] Departures write a review: 1–5 stars from satisfaction and one line from their best and worst memories ("The Buffet was great value, but the walk to the Snack Bar was endless.")
+- [x] Memories come from the room match, meals, bargains, long walks (12-tile rule), lines, high prices, hunger and boredom; parties who give up leave a 1-star review
+- [x] Tap a review to jump the camera to its building and open its panel, then return to the report
+- [x] Star rating: average of the last 50 reviews (starting near 2.5), shown in the top bar
+- [x] The rating sets the ferry size and the share of richer couples
+- [x] Saves keep reviews, room rates and a pending night report
+- [x] Money can go negative (shown in red); the GDD's investor rescue belongs to Pass 1
 
 ## Pass 1 — Depth and scenarios
 

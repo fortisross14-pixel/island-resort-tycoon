@@ -4,7 +4,7 @@ A premium mobile tycoon game: grow a tiny island into a five-star resort, check 
 hand, and watch them walk your paths and spend money.
 
 This repository holds the proof of concept. The plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
-**M1–M4 are done:** island and construction, clock and ferry, check-in, and needs and spending.
+**M1–M5 are done:** island and construction, clock and ferry, check-in, needs and spending, and the nightly accounts, reviews and star rating. Next come three passes: depth and scenarios, balance, and graphics/GUI.
 Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/
 
 ![M3: dragging a backpacker onto a room shows the match score](docs/m3.png)
@@ -33,7 +33,7 @@ npm run build      # type-check and build to dist/
 | Pause / speed | ❚❚ 1× 2× 4× | `Space` pauses |
 | Check in a guest | **Guests** tab: drag a card onto a room, or tap a card then a room | same; `G` toggles the tab |
 
-Tap a guest or a building with no tool selected to open its panel. A venue's panel sets its price.
+Tap a guest or a building with no tool selected to open its panel. A venue's panel sets its price; a room's panel sets the nightly rate. At 23:00 the night report appears: tap a review to see where it happened, then **Start day** (or Enter).
 
 ## Layout
 
@@ -46,7 +46,8 @@ src/
     pathGraph.ts   cached walking distances over the footpaths
     sim.ts         clock, ferry, check-in queue and guest agents (fixed tick)
     match.ts       room match score: budget tier and wishes
-    needs.ts       meters, venues, price steps
+    needs.ts       meters, venues, price steps, room rates
+    reviews.ts     review lines, stars and the rating
     rng.ts         seeded RNG
   render/     Three.js
     stage.ts       renderer, ortho camera, picking, pan/zoom, render-on-demand
@@ -56,6 +57,7 @@ src/
     coinPops.ts    floating +N coins on purchases
   ui/hud.ts   DOM overlay: top bar, build tray, guest cards, toasts
   ui/panel.ts guest and building info panel
+  ui/report.ts night report
   game.ts     input handling and tools; glues sim, render and UI
 tests/        Vitest specs for the sim
 ```

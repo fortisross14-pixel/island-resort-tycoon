@@ -73,13 +73,16 @@ export class Hud {
   private handlers: HudHandlers;
   private toastTimer = 0;
 
-  constructor(root: HTMLElement, h: HudHandlers) {
+  constructor(
+    private root: HTMLElement,
+    h: HudHandlers,
+  ) {
     root.innerHTML = `
       <header class="topbar">
         <div class="stat coins" title="Coins"><span class="coin-icon"></span><b data-coins>0</b></div>
         <div class="stat" title="Day and time"><span class="lbl">Day </span><b data-day>1</b> · <span data-time>07:00</span></div>
         <div class="stat guests" title="Guests on the island"><span class="guest-icon"></span><b data-guests>0</b></div>
-        <div class="stat rating" title="Star rating (from M5)">☆☆☆☆☆</div>
+        <div class="stat rating" title="Star rating: average of the last 50 reviews" data-rating>☆☆☆☆☆</div>
         <div class="speed" title="Speed (Space pauses)">
           <button data-speed="0" aria-label="Pause">❚❚</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
         </div>
@@ -165,6 +168,13 @@ export class Hud {
     if (this.guestsEl.textContent !== g) this.guestsEl.textContent = g;
   }
 
+  setRating(stars: number): void {
+    const el = this.root.querySelector<HTMLElement>('[data-rating]')!;
+    const full = Math.round(stars);
+    const text = `${'★'.repeat(full)}${'☆'.repeat(5 - full)} ${stars.toFixed(1)}`;
+    if (el.textContent !== text) el.textContent = text;
+  }
+
   setSpeed(speed: Speed): void {
     for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.speed) === speed);
   }
@@ -235,6 +245,7 @@ export class Hud {
 
   setCoins(n: number): void {
     this.coinsEl.textContent = Math.floor(n).toLocaleString('en-US');
+    this.coinsEl.classList.toggle('neg', n < 0);
   }
 
   setAffordable(item: TrayItem, ok: boolean): void {

@@ -1,5 +1,5 @@
 import { BUILDINGS } from './buildings';
-import { AUTO_PENALTY, accessOf, matchScore, type Match, type Wish } from './match';
+import { AUTO_PENALTY, ROOM_TIER, accessOf, matchScore, type Match, type Wish } from './match';
 import {
   DECAY,
   DEFAULT_PRICE,
@@ -7,6 +7,8 @@ import {
   FAR_TILES,
   LINE_PATIENCE,
   NAP_REST,
+  SUPPLIES_SHARE,
+  roomRateOf,
   NEEDS,
   STROLL_FUN,
   VENUES,
@@ -17,12 +19,14 @@ import {
   type PriceStep,
 } from './needs';
 import { PathGraph, UNREACHABLE } from './pathGraph';
+import { rating, reviewText, starsFor, type Memory, type Review } from './reviews';
 import { Rng } from './rng';
 import type { Building, Tile, World } from './world';
 
 /**
  * The living resort: the day clock, the morning ferry, check-in (M3), and guests
- * walking the footpaths to fill their needs and spend money (M4). Runs at a fixed tick, separate from drawing (GDD risk mitigation for
+ * walking the footpaths to fill their needs and spend money (M4), and the nightly
+ * accounts, reviews and star rating (M5). Runs at a fixed tick, separate from drawing (GDD risk mitigation for
  * many guests on phones). Pure TypeScript, so it runs headless in tests.
  *
  * Time units: "sim seconds" drive movement (one real second at 1x speed);
@@ -130,6 +134,8 @@ export interface Guest {
   spentToday: number;
   /** A venue they just declined (too pricey or too busy), skipped on the next choice. */
   avoid: number | null;
+  /** Highlights and complaints for their review. */
+  memories: Memory[];
   /** Building id of their room, or null when unhoused. */
   roomId: number | null;
   nightsLeft: number;
@@ -172,6 +178,35 @@ export interface DayStats {
   departed: number;
   /** Coins guests spent at venues today. */
   spending: number;
+  /** Nightly room charges. */
+  roomIncome: number;
+  /** Cost of goods sold at venues. */
+  supplies: number;
+  /** Daily building upkeep. */
+  upkeep: number;
+}
+
+export interface NightLine {
+  buildingId: number | null;
+  name: string;
+  amount: number;
+  detail: string;
+}
+
+/** The one-screen summary at the end of each day (GDD "Night report"). */
+export interface NightReport {
+  day: number;
+  income: NightLine[];
+  costs: NightLine[];
+  profit: number;
+  stats: DayStats;
+  checkingOut: number;
+  reviews: Review[];
+  ratingBefore: number;
+  ratingAfter: number;
+  best: string | null;
+  worst: string | null;
+  nextArrivals: number;
 }
 
 /** Live state of a food venue (M4). */
@@ -186,7 +221,11 @@ export interface Venue {
 }
 
 export interface SimSnapshot {
-  version: 3;
+  version: 4;
+  reviews: Review[];
+  nextReviewId: number;
+  roomRates: Record<number, PriceStep>;
+  night: NightReport | null;
   venues: Record<number, Venue>;
   minutes: number;
   rng: number;
@@ -203,13 +242,29 @@ export type SimEvent =
   | { type: 'gaveUp'; guestId: number }
   | { type: 'checkedIn'; guestId: number; roomId: number; score: number; auto: boolean }
   | { type: 'purchase'; guestId: number; buildingId: number; amount: number }
+  | { type: 'review'; review: Review }
+  | { type: 'night'; report: NightReport }
   | { type: 'newDay'; day: number; yesterday: DayStats };
 
-const emptyStats = (): DayStats => ({ arrived: 0, housed: 0, turnedAway: 0, departed: 0, spending: 0 });
+const emptyStats = (): DayStats => ({
+  arrived: 0,
+  housed: 0,
+  turnedAway: 0,
+  departed: 0,
+  spending: 0,
+  roomIncome: 0,
+  supplies: 0,
+  upkeep: 0,
+});
 
-/** Parties arriving on a given day's ferry (first pass; M5 ties this to the star rating). */
-export function arrivalsForDay(day: number): number {
-  return Math.min(3 + day, 12);
+/** Parties on a day's ferry: grows with the days and, above all, with the star rating. */
+export function arrivalsForDay(day: number, stars = 2.5): number {
+  return Math.max(2, Math.min(14, Math.round(2 + day * 0.7 + (stars - 2.5) * 2.5)));
+}
+
+/** Share of couples (richer guests) on the ferry, which rises with the rating. */
+export function coupleShare(stars: number): number {
+  return Math.max(0.2, Math.min(0.75, 0.45 + (stars - 2.5) * 0.15));
 }
 
 export type CheckInResult = { ok: true; score: number } | { ok: false; reason: string };
@@ -221,6 +276,15 @@ export class Sim {
   today: DayStats = emptyStats();
   /** Food venue state by building id. */
   venues: Record<number, Venue> = {};
+  /** Every review so far (the rating uses the latest 50). */
+  reviews: Review[] = [];
+  /** Nightly rate step per room tier. */
+  roomRates: Record<number, PriceStep> = { 1: DEFAULT_PRICE };
+  /** Set at 23:00 when `pauseAtNight` is on; the day resumes with startDay(). */
+  night: NightReport | null = null;
+  /** The game pauses on the night report; headless runs carry straight on. */
+  pauseAtNight = false;
+  private nextReviewId = 1;
   /** Front Desk behaviour: place arrivals automatically (scores AUTO_PENALTY lower). */
   autoCheckIn = false;
   readonly paths: PathGraph;
@@ -318,8 +382,27 @@ export class Sim {
     this.venue(id).price = step;
   }
 
+  roomTier(b: Building): number {
+    return ROOM_TIER[b.kind] ?? 1;
+  }
+
+  /** Nightly rate per party for a room building. */
+  roomRate(b: Building): number {
+    const tier = this.roomTier(b);
+    return roomRateOf(tier, this.roomRates[tier] ?? DEFAULT_PRICE);
+  }
+
+  setRoomRate(tier: number, step: PriceStep): void {
+    this.roomRates[tier] = step;
+  }
+
+  /** Current star rating, 1–5. */
+  get rating(): number {
+    return rating(this.reviews);
+  }
+
   match(g: Guest, room: Building): Match {
-    return matchScore(this.paths, this.world, g, room);
+    return matchScore(this.paths, this.world, g, room, this.roomRate(room));
   }
 
   occupancy(roomId: number): number {
@@ -350,18 +433,112 @@ export class Sim {
       g.pz = g.z;
     }
     if (this.stale) this.reconcile();
+    if (this.night) return;
 
     this.minutes += dt * MINUTES_PER_SECOND;
-    if (this.minutes >= DAY_END) this.endDay();
+    if (this.minutes >= DAY_END) {
+      this.closeDay();
+      if (this.night) return;
+    }
 
     this.stepFerry(dt);
     for (const g of this.guests) this.stepGuest(g, dt);
     if (this.guests.length > MAX_GUESTS * 2) this.guests = this.guests.filter((g) => g.state !== 'gone');
   }
 
-  private endDay(): void {
+  /** 23:00: charge the night's rooms and the day's upkeep, collect reviews, write the report. */
+  private closeDay(): void {
+    const t = this.today;
+    const roomLines = new Map<number, NightLine>();
+
+    for (const g of this.guests) {
+      const room = g.roomId !== null ? this.building(g.roomId) : undefined;
+      if (!room || g.leaving) continue;
+      const rate = this.roomRate(room);
+      const paid = Math.min(rate, g.budget);
+      if (rate > g.budget) {
+        g.satisfaction = Math.max(0, g.satisfaction - 8);
+        this.remember(g, room.id, -12, 'the room was overpriced');
+      }
+      this.world.earn(paid);
+      t.roomIncome += paid;
+      const line = roomLines.get(room.id) ?? { buildingId: room.id, name: BUILDINGS[room.kind].name, amount: 0, detail: '' };
+      line.amount += paid;
+      roomLines.set(room.id, line);
+      g.nightsLeft--;
+    }
+    for (const l of roomLines.values()) {
+      const n = this.occupancy(l.buildingId!);
+      l.detail = `${n} of ${ROOMS_PER_BUILDING} rooms`;
+    }
+
+    const costs: NightLine[] = [];
+    for (const b of this.world.buildings) {
+      const up = BUILDINGS[b.kind].upkeep;
+      this.world.earn(-up);
+      t.upkeep += up;
+    }
+    if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
+    if (t.supplies) costs.push({ buildingId: null, name: 'Supplies', amount: -t.supplies, detail: '30% of food sales' });
+
+    // Parties whose stay is over check out in the morning; they write their review tonight.
+    let checkingOut = 0;
+    for (const g of this.guests)
+      if (g.roomId !== null && !g.leaving && g.nightsLeft <= 0) {
+        checkingOut++;
+        this.writeReview(g);
+      }
+
+    const income: NightLine[] = [...roomLines.values()].sort((a, b) => b.amount - a.amount);
+    for (const b of this.world.buildings) {
+      const v = this.venues[b.id];
+      if (!v || !VENUES[b.kind]) continue;
+      income.push({ buildingId: b.id, name: BUILDINGS[b.kind].name, amount: v.revenueToday, detail: `${v.visitsToday} sold` });
+    }
+
+    const reviews = this.reviews.filter((rv) => rv.day === this.day);
+    const report: NightReport = {
+      day: this.day,
+      income,
+      costs,
+      profit: t.roomIncome + t.spending - t.supplies - t.upkeep,
+      stats: { ...t },
+      checkingOut,
+      reviews,
+      ratingBefore: rating(this.reviews.filter((rv) => rv.day < this.day)),
+      ratingAfter: this.rating,
+      best: this.bestMoment(income),
+      worst: this.worstMoment(),
+      nextArrivals: arrivalsForDay(this.day + 1, this.rating),
+    };
+    this.emit({ type: 'night', report });
+    if (this.pauseAtNight) this.night = report;
+    else this.startDay();
+  }
+
+  private bestMoment(income: NightLine[]): string | null {
+    const top = [...income].sort((a, b) => b.amount - a.amount)[0];
+    if (!top || top.amount <= 0) return null;
+    return `${top.name} brought in ${top.amount} coins (${top.detail})`;
+  }
+
+  private worstMoment(): string | null {
+    const t = this.today;
+    if (t.turnedAway > 0) return `${t.turnedAway} ${t.turnedAway === 1 ? 'party' : 'parties'} gave up waiting for a room`;
+    let worst: { name: string; lost: number } | null = null;
+    for (const b of this.world.buildings) {
+      const v = this.venues[b.id];
+      if (v && v.lostToday > (worst?.lost ?? 0)) worst = { name: BUILDINGS[b.kind].name, lost: v.lostToday };
+    }
+    if (worst) return `${worst.lost} guests walked away from the ${worst.name}`;
+    if (t.roomIncome + t.spending < t.upkeep + t.supplies) return 'Costs were higher than income';
+    return null;
+  }
+
+  /** Close the night report and start the next morning. */
+  startDay(): void {
+    this.night = null;
     const yesterday = this.today;
-    for (const g of this.guests) if (g.roomId !== null) g.nightsLeft--;
     this.world.day++;
     this.minutes = DAY_START;
     this.ferry.cameToday = false;
@@ -392,6 +569,27 @@ export class Sim {
     this.emit({ type: 'newDay', day: this.world.day, yesterday });
   }
 
+  // ---------- reviews (M5) ----------
+
+  private remember(g: Guest, buildingId: number | null, weight: number, text: string): void {
+    if (g.memories.some((m) => m.text === text)) return;
+    g.memories.push({ buildingId, weight, text });
+    if (g.memories.length > 12) {
+      // Keep the most memorable ones.
+      g.memories.sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+      g.memories.length = 12;
+    }
+  }
+
+  private writeReview(g: Guest, forceStars?: number): void {
+    const stars = forceStars ?? starsFor(g.satisfaction);
+    const { text, buildingId } = reviewText(stars, g.memories);
+    const review: Review = { id: this.nextReviewId++, day: this.day, guestType: g.type, stars, text, buildingId };
+    this.reviews.push(review);
+    if (this.reviews.length > 500) this.reviews.splice(0, this.reviews.length - 500);
+    this.emit({ type: 'review', review });
+  }
+
   private stepFerry(dt: number): void {
     const f = this.ferry;
     switch (f.phase) {
@@ -401,7 +599,7 @@ export class Sim {
           f.cameToday = true;
           f.t = 0;
           const room = MAX_GUESTS - this.onIsland;
-          f.toUnload = Math.max(0, Math.min(arrivalsForDay(this.day), room));
+          f.toUnload = Math.max(0, Math.min(arrivalsForDay(this.day, this.rating), room));
           this.emit({ type: 'ferryArriving' });
         }
         return;
@@ -446,7 +644,7 @@ export class Sim {
   }
 
   private spawnGuest(): void {
-    const type: GuestType = this.rng.next() < 0.55 ? 'backpacker' : 'couple';
+    const type: GuestType = this.rng.next() < coupleShare(this.rating) ? 'couple' : 'backpacker';
     const def = GUEST_TYPES[type];
     const [lo, hi] = def.nights;
     const pool = [...def.wishPool];
@@ -474,6 +672,7 @@ export class Sim {
       wallet: 0,
       spentToday: 0,
       avoid: null,
+      memories: [],
       roomId: null,
       nightsLeft: this.rng.int(lo, hi),
       leaving: false,
@@ -537,6 +736,8 @@ export class Sim {
     if (g.state === 'inside' && g.insideId === g.roomId) return;
     if (g.state !== 'walking' && g.state !== 'inline' && g.state !== 'inside') return;
     for (const n of NEEDS) g.needs[n] = Math.max(0, g.needs[n] - DECAY[n] * dt);
+    if (g.needs.hunger < 10) this.remember(g, null, -8, 'we were always hungry');
+    if (g.needs.fun < 10) this.remember(g, null, -6, 'there was nothing to do');
     const low = g.needs[lowestNeed(g.needs)];
     if (low < 25) g.satisfaction = Math.max(0, g.satisfaction - 0.25 * dt);
     else if (low > 60) g.satisfaction = Math.min(100, g.satisfaction + 0.04 * dt);
@@ -626,6 +827,7 @@ export class Sim {
 
   private walkAway(g: Guest, b: Building, v: Venue, thought: string, penalty: number): void {
     v.lostToday++;
+    this.remember(g, b.id, -penalty * 2, thought.replace(/[.!]$/, '').replace(/^./, (c) => c.toLowerCase()));
     g.satisfaction = Math.max(0, g.satisfaction - penalty);
     g.thought = thought;
     g.avoid = b.id;
@@ -641,7 +843,15 @@ export class Sim {
     g.wallet -= price;
     g.spentToday += price;
     this.today.spending += price;
-    this.world.earn(price);
+    const supplies = Math.round(price * SUPPLIES_SHARE);
+    this.today.supplies += supplies;
+    this.world.earn(price - supplies);
+    const name = BUILDINGS[b.kind].name;
+    const room = g.roomId !== null ? this.building(g.roomId) : undefined;
+    if (room && this.roomDistance(room, `b${b.id}`, this.access(b)) > FAR_TILES)
+      this.remember(g, b.id, -9, `the walk to the ${name} was endless`);
+    else if (v.price <= 1) this.remember(g, b.id, 7, `the ${name} was great value`);
+    else this.remember(g, b.id, 4, `we loved the ${name}`);
     g.needs[def.need] = Math.min(100, g.needs[def.need] + def.gain);
     for (const [n, add] of Object.entries(def.bonus ?? {})) {
       const k = n as keyof Meters;
@@ -717,6 +927,8 @@ export class Sim {
     g.roomId = room.id;
     g.satisfaction = score;
     g.roomScore = score;
+    if (score >= 75) this.remember(g, room.id, 8, 'our room was perfect');
+    else if (score < 45) this.remember(g, room.id, -8, 'our room wasn’t what we hoped for');
     g.thought = score >= 75 ? 'This is perfect!' : score >= 50 ? 'This will do.' : 'Hmm, not what we hoped for.';
     // Walk from wherever they stand on the pier onto the island.
     const d = this.world.dock;
@@ -761,6 +973,8 @@ export class Sim {
     g.thought = 'We waited ages for a room. Never again!';
     g.state = 'waiting';
     this.today.turnedAway++;
+    this.remember(g, null, -20, 'we waited ages on the pier and never got a room');
+    this.writeReview(g, 1);
     this.emit({ type: 'gaveUp', guestId: g.id });
   }
 
@@ -945,7 +1159,11 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 3,
+      version: 4,
+      reviews: structuredClone(this.reviews),
+      nextReviewId: this.nextReviewId,
+      roomRates: { ...this.roomRates },
+      night: this.night ? structuredClone(this.night) : null,
       venues: structuredClone(this.venues),
       minutes: this.minutes,
       rng: this.rng.state,
@@ -957,7 +1175,11 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 3) throw new Error('Incompatible save');
+    if (s.version !== 4) throw new Error('Incompatible save');
+    this.reviews = structuredClone(s.reviews);
+    this.nextReviewId = s.nextReviewId;
+    this.roomRates = { ...s.roomRates };
+    this.night = s.night ? structuredClone(s.night) : null;
     this.venues = structuredClone(s.venues);
     this.minutes = s.minutes;
     this.rng.state = s.rng;
@@ -971,7 +1193,11 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 3,
+      version: 4,
+      reviews: [],
+      nextReviewId: 1,
+      roomRates: { 1: DEFAULT_PRICE },
+      night: null,
       venues: {},
       minutes: DAY_START,
       rng: 0x1234abcd,

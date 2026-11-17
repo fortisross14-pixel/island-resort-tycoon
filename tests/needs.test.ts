@@ -47,14 +47,19 @@ describe('prices', () => {
 describe('needs and spending', () => {
   it('meters run down while guests are out', () => {
     const sim = autoSim(starterResort());
-    runHours(sim, 2);
-    const g = sim.guests.find((x) => x.roomId !== null)!;
-    const before = { ...g.needs };
-    // Force them outdoors for a moment and step.
-    g.state = 'walking';
-    g.insideId = null;
+    // Find a housed guest in the middle of a walk (so this tick can't end at a venue).
+    const midWalk = () =>
+      sim.guests.find((x) => x.roomId !== null && x.state === 'walking' && x.wp < x.waypoints.length - 2);
+    let g = midWalk();
+    for (let i = 0; !g && i < 20000; i++) {
+      sim.step();
+      g = midWalk();
+    }
+    expect(g).toBeDefined();
+    const before = { ...g!.needs };
     sim.step();
-    expect(g.needs.hunger).toBeLessThan(before.hunger);
+    expect(g!.needs.hunger).toBeLessThan(before.hunger);
+    expect(g!.needs.fun).toBeLessThan(before.fun);
   });
 
   it('guests buy food, and every coin lands in the resort’s money', () => {
@@ -68,7 +73,8 @@ describe('needs and spending', () => {
     runHours(sim, 12);
     expect(fromEvents).toBeGreaterThan(0);
     expect(sim.today.spending).toBe(fromEvents);
-    expect(w.money - start).toBe(fromEvents);
+    // Before the night's room charges and upkeep, the resort keeps sales minus supplies.
+    expect(w.money - start).toBe(fromEvents - sim.today.supplies);
     const venueTotal = Object.values(sim.venues).reduce((s, v) => s + v.revenueToday, 0);
     expect(venueTotal).toBe(fromEvents);
   });

@@ -87,3 +87,15 @@ export function lowestNeed(m: Meters): Need {
   for (const n of NEEDS) if (m[n] < m[best]) best = n;
   return best;
 }
+
+// ---------- room rates and costs (M5) ----------
+
+/** Nightly room rate per party at the "Fair" step, by room tier. */
+export const ROOM_BASE_RATE: Record<number, number> = { 1: 50, 2: 90, 3: 160 };
+
+export function roomRateOf(tier: number, step: PriceStep): number {
+  return Math.round((ROOM_BASE_RATE[tier] ?? 50) * PRICE_STEPS[step].mult);
+}
+
+/** GDD: "supplies (per sale, about 30% of food revenue)". */
+export const SUPPLIES_SHARE = 0.3;
