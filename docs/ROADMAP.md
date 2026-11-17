@@ -241,9 +241,18 @@ campaign map with shared research ties the missions together.
    clutter, the four ratings on every review and in a popover on the star chip, monthly wear,
    three maintenance levels and repairs from the building panel. Missions can now set goals on
    any of the four ratings.
-3. **Activities and the planner.** Dive shop and excursion pier, trail hut, yoga deck and kayak
+3. ✅ **Activities and the planner.** Dive shop and excursion pier, trail hut, yoga deck and kayak
    rental; jungle trails and boat routes drawn through points of interest; a planner with
    morning, afternoon and evening slots; guests sign up by interest and budget.
+   Done: Trail Hut (jungle hikes), Yoga Deck (classes), Kayak Rental (calm-water tours, after
+   Watersports research) and Excursion Pier (boat tours, after Excursions research). Islands
+   carry landmarks (viewpoints, ruins, a waterfall; turtles, dolphins, coral, mangroves).
+   Routes are drawn from the hub's panel; their quality comes from the landmarks passed, the
+   scenery and the length. The Plan tab sets which hubs run in each slot, every day. Guests sign
+   up 90 minutes before by interest, boredom, price and quality, meet at the hub, go out (boats
+   and hikers move along the route), pay per person, and judge the trip for the Activities
+   rating; a trip counts three times as much as a stroll. The Dive Shop and Marina stay
+   walk-in venues for now.
 4. **Home screen and progression.** An archipelago map with missions as a roadmap, experience
    and first-medal bonuses, global research and perks, a profile save separate from each
    resort, and the sandbox unlock.

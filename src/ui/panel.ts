@@ -1,3 +1,4 @@
+import { SLOTS, SLOT_NAMES, activityOf, activityPrice, landmarksOn, tripMinutes, type Slot } from '../sim/activities';
 import { BUILDINGS, ELEVATOR_ABOVE, ELEVATOR_COST, RATING_NAMES, THEME_NAMES, floorCost, ratingOf } from '../sim/buildings';
 import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, roomRateOf, type PriceStep } from '../sim/needs';
 import { GUEST_TYPES, type Guest, type Sim } from '../sim/sim';
@@ -34,7 +35,13 @@ export class InfoPanel {
   constructor(
     root: HTMLElement,
     private sim: Sim,
-    private actions: { addFloor(id: number): void; addElevator(id: number): void; repair(id: number): void },
+    private actions: {
+      addFloor(id: number): void;
+      addElevator(id: number): void;
+      repair(id: number): void;
+      drawRoute(id: number): void;
+      togglePlan(id: number, slot: Slot): void;
+    },
   ) {
     this.el = document.createElement('aside');
     this.el.className = 'panel';
@@ -53,6 +60,11 @@ export class InfoPanel {
       if (t.closest('[data-floor]')) this.actions.addFloor(this.subject.id);
       if (t.closest('[data-elevator]')) this.actions.addElevator(this.subject.id);
       if (t.closest('[data-repair]')) this.actions.repair(this.subject.id);
+      if (t.closest('[data-route]')) this.actions.drawRoute(this.subject.id);
+      const slot = t.closest<HTMLElement>('[data-hubslot]');
+      if (slot) this.actions.togglePlan(this.subject.id, slot.dataset.hubslot as Slot);
+      const ap = t.closest<HTMLButtonElement>('[data-aprice]');
+      if (ap) this.sim.setActivityPrice(this.subject.id, Number(ap.dataset.aprice) as PriceStep);
       this.render();
     });
     root.appendChild(this.el);
@@ -123,6 +135,7 @@ export class InfoPanel {
     const def = VENUES[b.kind];
     const kind = BUILDINGS[b.kind];
     if (kind.decor) return this.conditionHtml(b) + this.decorHtml(b);
+    if (activityOf(b.kind)) return this.conditionHtml(b) + this.hubHtml(b);
     if (!def) return this.conditionHtml(b) + (kind.family === 'rooms' ? this.roomHtml(b) : this.serviceHtml(b));
     const v = this.sim.venue(b.id);
     const free = def.basePrice === 0;
@@ -166,6 +179,36 @@ export class InfoPanel {
         <dt>Placed</dt><dd>${monthYear(b.builtDay)}</dd>
       </dl>
       <p class="estimate">Three of one theme together look better; mixing themes clashes; too many in one spot is clutter.</p>`;
+  }
+
+  /** Activity hubs (Pass 4 step 3): route, quality, price and the three slots. */
+  private hubHtml(b: Building): string {
+    const def = activityOf(b.kind)!;
+    const route = this.sim.world.routeOf(b.id);
+    const step = this.sim.activityPrice(b.id);
+    const prices = PRICE_STEPS.map(
+      (p, i) => `<button data-aprice="${i}" class="${i === step ? 'on' : ''}"><span>${p.label}</span><b>${activityPrice(def, i)}</b></button>`,
+    ).join('');
+    const seen = route ? landmarksOn(route, this.sim.world.landmarks) : [];
+    const routeInfo = def.route
+      ? route
+        ? `<dt>Route</dt><dd>${route.tiles.length} tiles · ${tripMinutes(def, route)} min</dd>
+           <dt>Sights</dt><dd>${seen.length ? seen.map((l) => l.name).join(', ') : 'None yet: pass closer to a landmark'}</dd>`
+        : `<dt>Route</dt><dd class="warn">Not drawn yet</dd>`
+      : `<dt>Class</dt><dd>${tripMinutes(def, null)} min · better with a view and decor nearby</dd>`;
+    const slots = SLOTS.map((s) => {
+      const on = this.sim.isPlanned(b.id, s);
+      const trip = this.sim.trips.find((t) => t.hubId === b.id && t.slot === s);
+      return `<button class="slot ${on ? 'on' : ''}" data-hubslot="${s}" aria-pressed="${on}">${SLOT_NAMES[s]}${trip ? ` · ${trip.people}` : ''}</button>`;
+    }).join('');
+    return `<p class="estimate">${def.name} · up to ${def.capacity} people</p>
+      <div class="meters">${bar(this.sim.sessionQuality(b.id), 'Quality')}</div>
+      <dl>${routeInfo}</dl>
+      ${def.route ? `<div class="floor-actions"><button data-route>${route ? 'Redraw route' : 'Draw route'}</button></div>` : ''}
+      <h4 class="sub">Price per person</h4>
+      <div class="prices" role="group" aria-label="Price per person">${prices}</div>
+      <h4 class="sub">Runs every day</h4>
+      <div class="hub-slots">${slots}</div>`;
   }
 
   private serviceHtml(b: Building): string {

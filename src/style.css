@@ -268,17 +268,17 @@ button:disabled { cursor: default; opacity: 0.4; }
   margin: 0 auto;
   border-radius: 36px;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   align-items: center;
   justify-items: center;
 }
-.dock.four { grid-template-columns: repeat(4, 1fr); }
+.dock.five { grid-template-columns: repeat(5, 1fr); }
 .dock button {
   position: relative;
   display: grid;
   justify-items: center;
   gap: 2px;
-  min-width: 56px;
+  min-width: 48px;
   min-height: 56px;
   padding-top: 6px;
   color: var(--ink-2);
@@ -789,3 +789,22 @@ button:disabled { cursor: default; opacity: 0.4; }
 .panel .condition { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin: 0 0 8px; }
 .panel .condition button { min-height: 44px; padding: 0 12px; border-radius: 22px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(16, 50, 59, 0.12); font-size: 13px; font-weight: 800; display: flex; gap: 4px; align-items: center; }
 .panel .condition button.urgent { background: var(--bad); color: #fff; border-color: var(--bad); }
+
+/* ---------- plan sheet (Pass 4 step 3) ---------- */
+.plan-cards { align-items: stretch; }
+.card.plan { width: 250px; justify-items: stretch; align-content: start; gap: 8px; padding: 8px; }
+.plan-head { display: grid; grid-template-columns: 40px 1fr; gap: 8px; align-items: center; text-align: left; min-height: 44px; }
+.plan-head .icon { width: 40px; height: 40px; }
+.plan-head > span:last-child { display: grid; gap: 2px; }
+.plan-head b { display: block; font-family: var(--display); font-size: 15px; }
+.plan-head > span:last-child > span { display: flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+.plan-head > span:last-child > span b { display: inline; font-family: var(--body); font-size: 12px; color: var(--ink); }
+.plan-head .ico { font-size: 12px; }
+.plan-head .warn { color: var(--bad); }
+.slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.slot { min-height: 44px; border-radius: 12px; font-size: 12px; font-weight: 800; background: rgba(16, 50, 59, 0.07); color: var(--ink-2); }
+.slot.on { background: var(--lagoon); color: #fff; }
+.hub-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
+.landmark-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.panel h4.sub { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+.panel dd.warn { color: var(--bad); }

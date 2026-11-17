@@ -1,3 +1,4 @@
+import { MAX_ROUTE, TRAIL_TILE_COST, activityOf, canStepOn, routeStarts, type Landmark, type Route } from './activities';
 import {
   BUILDINGS,
   DEMOLISH_REFUND,
@@ -49,6 +50,8 @@ export interface Layout {
   heights?: string;
   /** Plot letter per tile ('.' = none); absent = the plots' rectangles. */
   plotMap?: string;
+  /** Landmarks for hikes and boat tours (Pass 4 step 3). */
+  landmarks?: Landmark[];
 }
 
 /** Terrain codes (see islands.ts). */
@@ -144,6 +147,8 @@ export interface WorldSnapshot {
   nextId: number;
   paths: number[];
   buildings: Building[];
+  /** Trails and boat routes, one per activity hub (Pass 4 step 3). */
+  routes?: Route[];
 }
 
 const OK: Result = { ok: true };
@@ -176,6 +181,8 @@ export class World {
   /** Plot ids that share an edge with each plot. */
   private plotNeighbours = new Map<number, Set<number>>();
   private buildingsById = new Map<number, Building>();
+  /** Activity routes by hub id. */
+  private routesByHub = new Map<number, Route>();
   /** Extra rule from outside the map, e.g. research unlocks (set by the Sim). */
   gate: ((kind: BuildingKind) => Result) | null = null;
   private listeners = new Set<() => void>();
@@ -479,7 +486,61 @@ export class World {
     if (!b) return fail('No building there');
     for (const t of this.footprintTiles(b.kind, b.x, b.y, b.rot)) this.occ[this.idx(t.x, t.y)] = 0;
     this.buildingsById.delete(id);
+    this.routesByHub.delete(id);
     this.money += Math.floor(investedIn(b) * DEMOLISH_REFUND);
+    this.emit();
+    return OK;
+  }
+
+  // ---------- activity routes (Pass 4 step 3) ----------
+
+  get landmarks(): Landmark[] {
+    return this.layout.landmarks ?? [];
+  }
+
+  routeOf(hubId: number): Route | null {
+    return this.routesByHub.get(hubId) ?? null;
+  }
+
+  get routes(): Route[] {
+    return [...this.routesByHub.values()];
+  }
+
+  /** Check a whole route: starts beside the hub, each step next to the last, every tile usable. */
+  checkRoute(hubId: number, tiles: Tile[]): Result {
+    const b = this.buildingsById.get(hubId);
+    const def = b && activityOf(b.kind);
+    if (!b || !def?.route) return fail('That building has no route');
+    if (tiles.length < 3) return fail('Make the route a little longer');
+    if (tiles.length > MAX_ROUTE) return fail(`Routes are at most ${MAX_ROUTE} tiles`);
+    const starts = routeStarts(this, hubId);
+    if (!starts.some((t) => t.x === tiles[0].x && t.y === tiles[0].y)) return fail(def.route === 'trail' ? 'Start the trail next to the hut' : 'Start the route on the water next to it');
+    const seen = new Set<string>();
+    for (let i = 0; i < tiles.length; i++) {
+      const t = tiles[i];
+      const prev = i ? tiles[i - 1] : null;
+      if (prev && Math.abs(prev.x - t.x) + Math.abs(prev.y - t.y) !== 1) return fail('Each step must be next to the last');
+      const ok = canStepOn(this, def, t, prev);
+      if (!ok.ok) return ok;
+      seen.add(`${t.x},${t.y}`);
+    }
+    const cost = this.routeCost(hubId, tiles);
+    if (this.money < cost) return fail('Not enough coins');
+    return OK;
+  }
+
+  /** Trails cost a little per tile (clearing and signs); water routes are free. */
+  routeCost(hubId: number, tiles: Tile[]): number {
+    const b = this.buildingsById.get(hubId);
+    return b && activityOf(b.kind)?.route === 'trail' ? tiles.length * TRAIL_TILE_COST : 0;
+  }
+
+  setRoute(hubId: number, tiles: Tile[]): Result {
+    const check = this.checkRoute(hubId, tiles);
+    if (!check.ok) return check;
+    const def = activityOf(this.buildingsById.get(hubId)!.kind)!;
+    this.money -= this.routeCost(hubId, tiles);
+    this.routesByHub.set(hubId, { hubId, kind: def.route!, tiles: tiles.map((t) => ({ x: t.x, y: t.y })) });
     this.emit();
     return OK;
   }
@@ -638,6 +699,7 @@ export class World {
       nextId: this.nextId,
       paths,
       buildings: this.buildings.map((b) => ({ ...b })),
+      routes: this.routes.map((r) => ({ ...r, tiles: r.tiles.map((t) => ({ ...t })) })),
     };
   }
 
@@ -658,6 +720,8 @@ export class World {
       this.buildingsById.set(b.id, { ...b });
       for (const t of this.footprintTiles(b.kind, b.x, b.y, b.rot)) this.occ[this.idx(t.x, t.y)] = b.id;
     }
+    this.routesByHub.clear();
+    for (const r of s.routes ?? []) this.routesByHub.set(r.hubId, { ...r, tiles: r.tiles.map((t) => ({ ...t })) });
     this.emit();
   }
 

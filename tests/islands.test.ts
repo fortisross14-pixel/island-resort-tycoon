@@ -34,6 +34,14 @@ describe('authored islands', () => {
         expect('~-*').toContain(def.terrain[y + 1][x]);
       });
 
+      it('puts land landmarks on land and sea life on the water', () => {
+        for (const l of def.landmarks) {
+          const t = def.terrain[l.y][l.x];
+          if (['waterfall', 'ruins', 'viewpoint', 'cave'].includes(l.kind)) expect('sgjk', l.name).toContain(t);
+          else expect('~-*o', l.name).toContain(t);
+        }
+      });
+
       it('lets every plot be bought eventually, one neighbour at a time', () => {
         const w = World.onIsland(islandLayout(def.id), 10_000_000);
         for (let round = 0; round < 30; round++) for (const p of w.plots) if (!p.owned) w.buyPlot(p.id);

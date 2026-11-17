@@ -662,7 +662,92 @@ function welcomeArch(): THREE.Group {
   return g;
 }
 
+// ---------- activity hubs (Pass 4 step 3) ----------
+
+function trailHut(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.45, 0.6, PALETTE.wood, 0, 0.04, -0.05));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.62, 0.38, 4, 1), mat('#c9a35a'));
+  roof.rotation.y = Math.PI / 4;
+  roof.position.y = 0.68;
+  roof.castShadow = true;
+  g.add(roof);
+  g.add(box(0.05, 0.75, 0.05, PALETTE.woodDark, 0.38, 0, 0.32));
+  g.add(box(0.3, 0.16, 0.03, '#2e9e4f', 0.38, 0.6, 0.34));
+  return g;
+}
+
+function yogaDeck(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.7, 0.1, 1.7, '#c99a64', 0, 0.02));
+  for (const [x, z] of [
+    [-0.78, -0.78],
+    [0.78, -0.78],
+    [-0.78, 0.78],
+    [0.78, 0.78],
+  ])
+    g.add(box(0.07, 0.95, 0.07, PALETTE.woodDark, x, 0.1, z));
+  g.add(box(1.75, 0.04, 1.75, '#f3e6c8', 0, 1.05));
+  const mats = ['#3fa7a0', '#e64a8a', '#f2b441', '#7a5cff'];
+  mats.forEach((c, i) => g.add(box(0.28, 0.02, 0.6, c, -0.5 + i * 0.34, 0.12, 0.1)));
+  return g;
+}
+
+function kayakRental(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.55, 0.4, 0.45, '#2ec4b6', 0, 0.04, -0.15));
+  g.add(box(0.62, 0.05, 0.52, PALETTE.white, 0, 0.44, -0.15));
+  for (const [i, c] of ['#ff7a59', '#ffd23d'].entries()) {
+    const k = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.6, 2, 6), mat(c));
+    k.rotation.z = Math.PI / 2;
+    k.position.set(0, 0.12 + i * 0.12, 0.28);
+    k.castShadow = true;
+    g.add(k);
+  }
+  return g;
+}
+
+function excursionPier(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.8, 0.08, 1.9, PALETTE.wood, 0, 0.02));
+  g.add(box(0.5, 0.45, 0.5, '#fff4e2', 0, 0.1, -0.6));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.25, 4, 1), mat('#2e86c1'));
+  roof.rotation.y = Math.PI / 4;
+  roof.position.set(0, 0.68, -0.6);
+  roof.castShadow = true;
+  g.add(roof);
+  g.add(box(0.05, 0.9, 0.05, PALETTE.white, 0.32, 0.1, 0.75));
+  const flag = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 3), mat('#ff7a59'));
+  flag.rotation.z = -Math.PI / 2;
+  flag.position.set(0.44, 0.92, 0.75);
+  g.add(flag);
+  return g;
+}
+
+/** The boat for a tour, and the kayaks: drawn moving along their route during a trip. */
+export function tourBoat(kayak: boolean): THREE.Group {
+  const g = new THREE.Group();
+  if (kayak) {
+    for (const [i, c] of ['#ff7a59', '#ffd23d', '#2ec4b6'].entries()) {
+      const k = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.5, 2, 6), mat(c));
+      k.rotation.x = Math.PI / 2;
+      k.position.set(-0.22 + i * 0.22, 0, (i % 2) * 0.2);
+      g.add(k);
+    }
+    return g;
+  }
+  g.add(box(0.5, 0.18, 1.0, PALETTE.white, 0, -0.08));
+  g.add(box(0.52, 0.05, 1.02, '#2e86c1', 0, 0.02));
+  g.add(box(0.36, 0.22, 0.4, '#fff4e2', 0, 0.1, 0.1));
+  g.add(box(0.44, 0.04, 0.5, '#2e86c1', 0, 0.32, 0.1));
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  trailHut,
+  yogaDeck,
+  kayakRental,
+  excursionPier,
   palmTree: palmTreeDecor,
   bench,
   lampPost,

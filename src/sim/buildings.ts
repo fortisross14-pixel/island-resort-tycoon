@@ -31,6 +31,11 @@ export type BuildingKind =
   | 'waterVillas'
   | 'helipad'
   | 'marina'
+  // Activity hubs (Pass 4): scheduled in the planner.
+  | 'trailHut'
+  | 'yogaDeck'
+  | 'kayakRental'
+  | 'excursionPier'
   // Decor (Pass 4): small items that make the resort prettier.
   | 'palmTree'
   | 'bench'
@@ -403,6 +408,60 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     blurb: 'Yacht trips · shore',
     quality: 4,
     unlock: 4,
+    coast: true,
+    rating: 'activities',
+  },
+  trailHut: {
+    kind: 'trailHut',
+    name: 'Trail Hut',
+    family: 'fun',
+    w: 1,
+    h: 1,
+    cost: 1800,
+    upkeep: 20,
+    blurb: 'Guided jungle hikes · draw a trail',
+    quality: 1,
+    unlock: 0,
+    rating: 'activities',
+  },
+  yogaDeck: {
+    kind: 'yogaDeck',
+    name: 'Yoga Deck',
+    family: 'fun',
+    w: 2,
+    h: 2,
+    cost: 2500,
+    upkeep: 25,
+    blurb: 'Classes · best with a view',
+    quality: 2,
+    unlock: 0,
+    rating: 'activities',
+  },
+  kayakRental: {
+    kind: 'kayakRental',
+    name: 'Kayak Rental',
+    family: 'fun',
+    w: 1,
+    h: 1,
+    cost: 2200,
+    upkeep: 25,
+    blurb: 'Paddle tours · shore · draw a route',
+    quality: 1,
+    unlock: 1,
+    coast: true,
+    rating: 'activities',
+  },
+  excursionPier: {
+    kind: 'excursionPier',
+    name: 'Excursion Pier',
+    family: 'fun',
+    w: 1,
+    h: 2,
+    cost: 4000,
+    upkeep: 45,
+    blurb: 'Boat tours to sea life · shore · draw a route',
+    quality: 2,
+    unlock: 1,
     coast: true,
     rating: 'activities',
   },

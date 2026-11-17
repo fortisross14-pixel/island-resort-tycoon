@@ -22,9 +22,11 @@ const SIM_STEPS: Record<number, (s: AnySim) => AnySim> = {
   5: (s) => ({ ...s, version: 6, campaign: null, redDays: 0, investor: null, offer: null }),
   // Pass 4 step 2 added the four ratings and maintenance; guests start their category scores now.
   6: (s) => ({ ...s, version: 7, maintenance: 'normal' }),
+  // Pass 4 step 3 added the day plan and activity sessions.
+  7: (s) => ({ ...s, version: 8, plan: [], activityPrices: {}, trips: [], slotsDone: { morning: 0, afternoon: 0, evening: 0 } }),
 };
 
-export const SIM_VERSION = 7;
+export const SIM_VERSION = 8;
 
 export function migrateSim(s: AnySim): SimSnapshot {
   let cur = s;

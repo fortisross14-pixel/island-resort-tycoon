@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import v5 from './fixtures/save-v5.json?raw';
 import v6 from './fixtures/save-v6.json?raw';
 import v7 from './fixtures/save-v7.json?raw';
+import v8 from './fixtures/save-v8.json?raw';
 import { parseSave, migrateSim, SIM_VERSION } from '../src/sim/save';
 import { World } from '../src/sim/world';
 import { Sim } from '../src/sim/sim';
 
-const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6, 'save-v7.json': v7 };
+const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6, 'save-v7.json': v7, 'save-v8.json': v8 };
 const fixture = (name: string) => FIXTURES[name];
 
 /** Load a save the way the game does and run it for a while. */
@@ -21,12 +22,20 @@ function play(raw: string): { world: World; sim: Sim } {
 }
 
 describe('saves', () => {
-  it('loads a current (v7) save and keeps playing', () => {
-    const r = parseSave(fixture('save-v7.json'));
+  it('loads a current (v8) save and keeps playing', () => {
+    const r = parseSave(fixture('save-v8.json'));
     expect(r.ok && r.migrated).toBe(false);
-    const { world, sim } = play(fixture('save-v7.json'));
+    const { world, sim } = play(fixture('save-v8.json'));
     expect(world.buildings.length).toBeGreaterThan(0);
     expect(sim.campaign).not.toBeNull();
+    expect(sim.dayPlan).toHaveLength(1);
+  });
+
+  it('upgrades a v7 save (before activities) with an empty day plan', () => {
+    const r = parseSave(fixture('save-v7.json'));
+    expect(r.ok && r.migrated).toBe(true);
+    const { sim } = play(fixture('save-v7.json'));
+    expect(sim.dayPlan).toEqual([]);
     expect(sim.maintenance).toBe('normal');
   });
 
@@ -51,7 +60,7 @@ describe('saves', () => {
   });
 
   it('keeps the world when the sim is from an unknown version', () => {
-    const data = JSON.parse(fixture('save-v7.json'));
+    const data = JSON.parse(fixture('save-v8.json'));
     data.sim.version = 2;
     const r = parseSave(JSON.stringify(data));
     expect(r.ok && r.save.sim === undefined && r.migrated).toBe(true);

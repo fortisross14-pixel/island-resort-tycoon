@@ -18,9 +18,10 @@ export function emptyScores(): CategoryScores {
   return { sum: { lodging: 0, amenities: 0, activities: 0, decor: 0 }, n: { lodging: 0, amenities: 0, activities: 0, decor: 0 } };
 }
 
-export function addScore(s: CategoryScores, cat: RatingCategory, value: number): void {
-  s.sum[cat] += Math.max(0, Math.min(100, value));
-  s.n[cat]++;
+/** `weight`: how memorable this moment is (a planned trip counts for more than a stroll). */
+export function addScore(s: CategoryScores, cat: RatingCategory, value: number, weight = 1): void {
+  s.sum[cat] += Math.max(0, Math.min(100, value)) * weight;
+  s.n[cat] += weight;
 }
 
 /**

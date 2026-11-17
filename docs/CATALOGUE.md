@@ -86,6 +86,23 @@ in a 3×3 square is clutter; buildings below 50% condition spoil the view nearby
 | Bunting | 200 | 5 | 2 | Caribbean | |
 | Welcome Arch | 700 | 14 | 3 | Caribbean | |
 
+## Activities (Pass 4 step 3)
+
+| Hub | Cost | Activity | People | Price each (fair) | Route | Unlock |
+|---|---|---|---|---|---|---|
+| Trail Hut | 1,800 | Jungle hike | 10 | 9 | Trail on land, one level per step, 5 coins a tile | start |
+| Yoga Deck | 2,500 | Yoga class (75 min) | 8 | 11 | none: quality from the view and decor | start |
+| Kayak Rental | 2,200 | Kayak tour | 6 | 14 | Calm water only (shallows, reef, lagoon) | Watersports |
+| Excursion Pier | 4,000 | Boat tour | 12 | 24 | Any water | Excursions |
+
+Sessions run in the slots you tick in the Plan tab: morning (10:00), afternoon (14:00) and
+evening (18:00), every day. Route quality = 30 + 12 per landmark passed (up to 4) + up to 18
+for scenery (jungle or high ground on trails, reef or lagoon on the water) + up to 10 for a
+sensible length (16 tiles for trails, 22 for boats).
+
+Guest interest (0–1): backpackers love hikes and kayaks, wellness guests yoga, families,
+party groups and VIPs boat tours.
+
 ## Ratings and maintenance (Pass 4)
 
 Every review now gives a star for **Lodging** (room match, comfort, noise, price, wear),

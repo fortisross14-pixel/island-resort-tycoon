@@ -38,6 +38,8 @@ export const NODES: ResearchNode[] = [
   { id: 'beachBar', name: 'Beach Bar', branch: 'dining', tier: 1, cost: 15, unlocks: ['beachBar'], blurb: 'Drinks on the shore' },
   { id: 'pool', name: 'Pool', branch: 'leisure', tier: 1, cost: 20, unlocks: ['pool'], blurb: 'Free fun and comfort' },
   { id: 'giftShop', name: 'Gift Shop', branch: 'leisure', tier: 1, cost: 12, unlocks: ['giftShop'], blurb: 'Souvenirs for every budget' },
+  { id: 'watersports', name: 'Watersports', branch: 'leisure', tier: 1, cost: 14, unlocks: ['kayakRental'], blurb: 'Kayak tours on calm water' },
+  { id: 'excursions', name: 'Excursions', branch: 'operations', tier: 1, cost: 20, unlocks: ['excursionPier'], blurb: 'Boat tours to the sea life' },
   // Tier 2
   { id: 'tallBuildings', name: 'Tall Buildings', branch: 'hospitality', tier: 2, cost: 40, unlocks: [], blurb: 'Room buildings up to 6 floors' },
   { id: 'gardenBungalows', name: 'Garden Bungalows', branch: 'hospitality', tier: 2, cost: 60, unlocks: ['gardenBungalows'], minStars: 3, blurb: 'Premium rooms in a quiet garden' },

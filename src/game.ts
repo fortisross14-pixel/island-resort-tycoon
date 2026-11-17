@@ -15,6 +15,8 @@ import { islandLayout } from './sim/islands';
 const SANDBOX_ISLAND = 'twinPalms';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
+import { ActivityView } from './render/activityView';
+import { SLOTS, activityOf, activityPrice, canStepOn, landmarksOn, routeQuality, routeStarts, type Slot } from './sim/activities';
 import { setWindowGlow } from './render/models';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
 import { Sound } from './ui/sfx';
@@ -27,7 +29,9 @@ type Tool =
   | { type: 'path' }
   | { type: 'land' }
   | { type: 'build'; kind: BuildingKind; rot: Rotation }
-  | { type: 'demolish' };
+  | { type: 'demolish' }
+  /** Drawing a hike trail or boat route for an activity hub (Pass 4 step 3). */
+  | { type: 'route'; hubId: number; tiles: Tile[] };
 
 const SAVE_KEY = 'irt.save.v1';
 /** The save as it was at the start of the current day. */
@@ -61,6 +65,7 @@ interface Ptr {
 const GUEST_HINT = 'Drag a guest onto a room';
 
 const HINTS: Record<Tool['type'], string> = {
+  route: 'Drag from the hub past the landmarks · ✓ to save',
   land: 'Tap a plot next to your island',
   none: '',
   path: 'Draw from a path that reaches the dock',
@@ -98,6 +103,8 @@ export class Game {
   private saveWarned = false;
   private lightInit = false;
   private lastBuildCost = 0;
+  private activityView: ActivityView;
+  private planRefresh = 0;
   private coach!: Coach;
   private coachBase = { paths: 0, arrived: false, checkedIn: 0, night: false };
   /** The arrival card being placed (dragged, or tapped then a room tapped). */
@@ -131,6 +138,7 @@ export class Game {
     this.view = new WorldView(this.stage, this.world);
     this.guestView = new GuestView(this.stage, this.sim);
     this.ferryView = new FerryView(this.stage, this.sim);
+    this.activityView = new ActivityView(this.stage, this.world, this.sim);
     this.coinPops = new CoinPops(this.stage);
     this.hud = new Hud(hudRoot, {
       onMaintenance: (level) => {
@@ -150,7 +158,9 @@ export class Game {
       onRotate: () => this.rotate(),
       onDemolish: () => this.setTool(this.tool.type === 'demolish' ? { type: 'none' } : { type: 'demolish' }),
       onUndo: () => this.undo(),
-      onCancel: () => this.setTool({ type: 'none' }),
+      onCancel: () => (this.tool.type === 'route' ? this.finishRoute(true) : this.setTool({ type: 'none' })),
+      onPlanToggle: (hubId, slot) => this.togglePlan(hubId, slot),
+      onPlanOpen: (hubId) => this.focusBuilding(hubId),
       onNewIsland: () => this.newIsland(),
       onSpeed: (sp) => this.setSpeed(sp),
       onTab: (tab) => this.setTab(tab),
@@ -167,6 +177,8 @@ export class Game {
         const r = this.history.run(() => this.world.addElevator(id));
         this.hud.toast(r.ok ? 'Elevator installed' : r.reason, r.ok ? 'good' : 'bad');
       },
+      drawRoute: (id) => this.startRoute(id),
+      togglePlan: (id, slot) => this.togglePlan(id, slot),
       repair: (id) => {
         const r = this.history.run(() => this.world.repair(id));
         if (r.ok) this.sfx.play('place');
@@ -251,11 +263,13 @@ export class Game {
     }
     const alpha = this.speed > 0 ? this.tickAcc / TICK : 1;
     this.guestView.update(alpha, this.speed > 0 ? dt : 0);
+    const tripsMoving = this.activityView.update(this.speed > 0 ? dt : 0);
+    if (this.tab === 'plan' && performance.now() - this.planRefresh > 500) this.refreshPlan();
     this.ferryView.update(this.speed > 0 ? dt : 0);
     // Both must run every frame (|| would skip the view while coins are popping).
     const coinsMoving = this.coinPops.update(dt * Math.max(this.speed, 1));
     const viewMoving = this.view.update(dt);
-    const popping = coinsMoving || viewMoving;
+    const popping = coinsMoving || viewMoving || tripsMoving;
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     this.updateLight();
@@ -411,6 +425,9 @@ export class Game {
   setTab(tab: Tab): void {
     this.tab = tab;
     this.hud.setTab(tab);
+    if (tab === 'plan') this.refreshPlan();
+    // Sheets and the side panel share the screen on phones: one at a time.
+    if (tab !== 'none' && window.innerWidth < 700) this.panel.close();
     if (tab === 'guests') {
       if (this.tool.type !== 'none') this.setTool({ type: 'none' });
       const first = this.sim.queue[0];
@@ -534,7 +551,11 @@ export class Game {
   // ---------- tools ----------
 
   setTool(t: Tool): void {
-    if (t.type !== 'none' && this.tab !== 'build') this.setTab('build');
+    if (this.tool.type === 'route' && t.type !== 'route') this.activityView.setDraft([], [], true, null);
+    if (t.type === 'route') {
+      this.panel.close();
+      if (this.tab !== 'none') this.setTab('none');
+    } else if (t.type !== 'none' && this.tab !== 'build') this.setTab('build');
     this.tool = t;
     this.ghostAt = null;
     this.view.hideGhost();
@@ -550,8 +571,121 @@ export class Game {
             : t.type === 'demolish'
               ? 'demolish'
               : null;
-    this.hud.setActive(active, t.type === 'build');
+    this.hud.setActive(t.type === 'route' ? 'route' : active, t.type === 'build');
     this.hud.setHint(HINTS[t.type]);
+    if (t.type === 'route') this.drawDraft();
+  }
+
+  // ---------- activities (Pass 4 step 3) ----------
+
+  private focusBuilding(id: number): void {
+    const b = this.world.buildings.find((x) => x.id === id);
+    if (!b) return;
+    const { w, h } = footprint(b.kind, b.rot);
+    this.stage.lookAt(b.x + w / 2, b.y + h / 2);
+    this.setTab('none');
+    this.panel.showBuilding(id);
+  }
+
+  private togglePlan(hubId: number, slot: Slot): void {
+    const r = this.sim.setPlanned(hubId, slot, !this.sim.isPlanned(hubId, slot));
+    if (!r.ok) {
+      this.sfx.play('error');
+      this.hud.toast(r.reason);
+    } else this.sfx.play('tap');
+    this.refreshPlan();
+    this.save();
+  }
+
+  /** The Plan sheet rows: every activity hub with its slots and today's turnout. */
+  private refreshPlan(): void {
+    this.planRefresh = performance.now();
+    const rows = this.world.buildings
+      .filter((b) => activityOf(b.kind))
+      .map((b) => {
+        const def = activityOf(b.kind)!;
+        const blocked = def.route && !this.world.routeOf(b.id) ? 'Tap to draw its route' : null;
+        const slots = Object.fromEntries(SLOTS.map((s) => [s, this.sim.isPlanned(b.id, s)])) as Record<Slot, boolean>;
+        const went = Object.fromEntries(
+          SLOTS.map((s) => {
+            const t = this.sim.trips.find((x) => x.hubId === b.id && x.slot === s);
+            return [s, t ? t.people : null];
+          }),
+        ) as Record<Slot, number | null>;
+        return {
+          hubId: b.id,
+          name: BUILDINGS[b.kind].name,
+          activity: def.name,
+          icon: b.kind,
+          quality: Math.round(this.sim.sessionQuality(b.id)),
+          blocked,
+          slots,
+          went,
+          price: activityPrice(def, this.sim.activityPrice(b.id)),
+        };
+      });
+    this.hud.setPlan(rows);
+  }
+
+  private startRoute(hubId: number): void {
+    this.setTool({ type: 'route', hubId, tiles: [] });
+    this.hud.toast('Start beside the hub (white tiles), then drag through the landmarks', 'info');
+  }
+
+  /** Extend the route being drawn towards a tile; stepping back onto the last tile undoes. */
+  private routeTo(t: Tile): void {
+    if (this.tool.type !== 'route') return;
+    const tool = this.tool;
+    const hub = this.world.buildings.find((b) => b.id === tool.hubId);
+    const def = hub && activityOf(hub.kind);
+    if (!def) return;
+    const tiles = tool.tiles;
+    if (!tiles.length) {
+      if (routeStarts(this.world, tool.hubId).some((s) => s.x === t.x && s.y === t.y)) tiles.push(t);
+      return this.drawDraft();
+    }
+    for (const step of manhattanSteps(tiles[tiles.length - 1], t)) {
+      const prev = tiles[tiles.length - 1];
+      if (tiles.length >= 2 && tiles[tiles.length - 2].x === step.x && tiles[tiles.length - 2].y === step.y) {
+        tiles.pop();
+        continue;
+      }
+      if (tiles.length >= 40 || !canStepOn(this.world, def, step, prev).ok) break;
+      tiles.push(step);
+    }
+    this.drawDraft();
+  }
+
+  private drawDraft(): void {
+    if (this.tool.type !== 'route') return;
+    const { hubId, tiles } = this.tool;
+    const hub = this.world.buildings.find((b) => b.id === hubId);
+    const def = hub && activityOf(hub.kind);
+    if (!hub || !def?.route) return;
+    const check = tiles.length ? this.world.checkRoute(hubId, tiles) : { ok: true as const };
+    this.activityView.setDraft(tiles, routeStarts(this.world, hubId), check.ok, def.route);
+    if (!tiles.length) return this.hud.setHint(HINTS.route);
+    const route = { hubId, kind: def.route, tiles };
+    const seen = landmarksOn(route, this.world.landmarks);
+    const q = routeQuality(this.world, route, def, this.world.landmarks);
+    this.hud.setHint(`${tiles.length} tiles · ${seen.length ? seen.map((l) => l.name).join(', ') : 'no landmarks yet'} · quality ${q}`);
+  }
+
+  /** ✓ saves the route (if it's valid); Esc throws the draft away. */
+  private finishRoute(commit: boolean): void {
+    if (this.tool.type !== 'route') return;
+    const { hubId, tiles } = this.tool;
+    if (commit && tiles.length) {
+      const r = this.history.run(() => this.world.setRoute(hubId, tiles));
+      if (!r.ok) {
+        this.sfx.play('error');
+        return this.hud.toast(r.reason);
+      }
+      this.sfx.play('chime');
+      this.hud.toast('Route saved: add it to the plan', 'good');
+    }
+    this.setTool({ type: 'none' });
+    this.focusBuilding(hubId);
   }
 
   private rotate(): void {
@@ -561,6 +695,11 @@ export class Game {
   }
 
   private undo(): void {
+    // While drawing a route, undo takes back the last few tiles.
+    if (this.tool.type === 'route') {
+      this.tool.tiles.splice(Math.max(0, this.tool.tiles.length - 4));
+      return this.drawDraft();
+    }
     if (this.history.undo()) this.hud.toast('Undone', 'info');
     if (this.tool.type === 'build' && this.ghostAt) this.previewBuild(this.ghostAt);
   }
@@ -890,6 +1029,7 @@ export class Game {
     if (this.goals.isOpen) return this.goals.toggle(false);
     if (this.panel.open) return this.panel.close();
     if (this.selectedGuest !== null) return this.selectGuest(null);
+    if (this.tool.type === 'route') return this.finishRoute(false);
     if (this.tool.type !== 'none') return this.setTool({ type: 'none' });
     if (this.tab !== 'none') return this.setTab('none');
   }
@@ -914,6 +1054,10 @@ export class Game {
     }
     this.press = 'tool';
     const t = this.tileAt(e.clientX, e.clientY);
+    if (this.tool.type === 'route') {
+      if (t) this.routeTo(t);
+      return;
+    }
     if (this.tool.type === 'path') {
       this.history.begin();
       this.stroke = { last: null, placed: 0, firstError: null };
@@ -955,6 +1099,7 @@ export class Game {
 
     const t = this.tileAt(e.clientX, e.clientY);
     if (!t) return;
+    if (this.tool.type === 'route') return this.routeTo(t);
     if (this.tool.type === 'path') {
       const last = this.stroke?.last;
       if (!last || last.x !== t.x || last.y !== t.y) this.strokeTo(t);

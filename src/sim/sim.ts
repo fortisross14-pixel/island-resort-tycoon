@@ -37,6 +37,19 @@ import {
 } from './ratings';
 import { RATING_CATEGORIES, ratingOf, type RatingCategory } from './buildings';
 import { conditionOf } from './world';
+import {
+  GATHER_LEAD,
+  SIGNUP_LEAD,
+  SLOTS,
+  SLOT_START,
+  activityOf,
+  activityPrice,
+  interestOf,
+  landmarksOn,
+  routeQuality,
+  tripMinutes,
+  type Slot,
+} from './activities';
 import { Campaign, type CampaignState } from './scenario';
 import { Rng } from './rng';
 import { floorsOf, type Building, type Result, type Tile, type World } from './world';
@@ -220,7 +233,7 @@ export interface Point {
   z: number;
 }
 
-export type Purpose = 'room' | 'rest' | 'food';
+export type Purpose = 'room' | 'rest' | 'food' | 'activity';
 
 export type Goal =
   | { kind: 'building'; id: number; purpose: Purpose }
@@ -262,6 +275,8 @@ export interface Guest {
   memories: Memory[];
   /** What they think of each rating category so far (Pass 4). */
   scores?: CategoryScores;
+  /** A session they signed up for today (Pass 4 step 3). */
+  booking?: { hubId: number; slot: Slot; phase: 'signed' | 'going' | 'waiting' | 'out' } | null;
   /** Building id of their room, or null when unhoused. */
   roomId: number | null;
   nightsLeft: number;
@@ -312,6 +327,27 @@ export interface DayStats {
   upkeep: number;
   /** Research points earned today (review stars and offices). */
   research: number;
+}
+
+/** A session in the day plan: an activity hub in a slot (Pass 4 step 3). */
+export interface PlanEntry {
+  hubId: number;
+  slot: Slot;
+}
+
+/** A session that went out today: for the report, and for drawing boats and hikers. */
+export interface Trip {
+  hubId: number;
+  slot: Slot;
+  /** Schedule minutes. */
+  start: number;
+  end: number;
+  guestIds: number[];
+  people: number;
+  quality: number;
+  revenue: number;
+  /** Signed up but didn't make it to the meeting point. */
+  missed: number;
 }
 
 export interface NightLine {
@@ -373,7 +409,12 @@ export interface Venue {
 }
 
 export interface SimSnapshot {
-  version: 7;
+  version: 8;
+  /** The day plan, prices per hub, and today's sessions (Pass 4 step 3). */
+  plan: PlanEntry[];
+  activityPrices: Record<number, PriceStep>;
+  trips: Trip[];
+  slotsDone: Record<Slot, number>;
   /** Monthly maintenance spend (Pass 4). */
   maintenance: MaintenanceLevel;
   campaign: CampaignState | null;
@@ -450,6 +491,14 @@ export class Sim {
   readonly research = new Research();
   /** Monthly maintenance spend: more slows wear (Pass 4). */
   maintenance: MaintenanceLevel = 'normal';
+  /** The day plan: which hub runs in which slot (repeats every day). */
+  dayPlan: PlanEntry[] = [];
+  /** Price step per activity hub (default: the middle step). */
+  activityPrices: Record<number, PriceStep> = {};
+  /** Today's sessions (cleared each morning). */
+  trips: Trip[] = [];
+  /** Per slot today: 1 = sign-ups done, 2 = departed. */
+  slotsDone: Record<Slot, number> = { morning: 0, afternoon: 0, evening: 0 };
   /** Decoration appeal per tile. */
   readonly appeal: AppealMap;
   /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
@@ -712,6 +761,7 @@ export class Sim {
     }
 
     this.stepFerry(dt);
+    this.stepActivities();
     for (const g of this.guests) this.stepGuest(g, dt);
     this.campaign?.tick(dt);
     if (this.guests.length > MAX_GUESTS * 2) this.guests = this.guests.filter((g) => g.state !== 'gone');
@@ -806,6 +856,13 @@ export class Sim {
       income.push({ buildingId: b.id, name: BUILDINGS[b.kind].name, amount: v.revenueToday, detail: `${v.visitsToday} sold` });
     }
 
+    for (const b of this.world.buildings) {
+      const trips = this.trips.filter((t) => t.hubId === b.id && t.people > 0);
+      if (!trips.length) continue;
+      const people = trips.reduce((s, t) => s + t.people, 0);
+      income.push({ buildingId: b.id, name: BUILDINGS[b.kind].name, amount: trips.reduce((s, t) => s + t.revenue, 0), detail: `${trips.length} session${trips.length === 1 ? '' : 's'} · ${people} guests` });
+    }
+
     const reviews = this.reviews.filter((rv) => rv.day === this.day);
     const report: NightReport = {
       day: this.day,
@@ -892,7 +949,10 @@ export class Sim {
     this.minutes = DAY_START;
     this.ferry.cameToday = false;
     this.today = emptyStats();
+    this.trips = [];
+    this.slotsDone = { morning: 0, afternoon: 0, evening: 0 };
     this.guests = this.guests.filter((g) => g.state !== 'gone');
+    for (const g of this.guests) g.booking = null;
     for (const v of Object.values(this.venues)) {
       v.visitsToday = 0;
       v.revenueToday = 0;
@@ -919,6 +979,145 @@ export class Sim {
     }
     this.campaign?.onMorning();
     this.emit({ type: 'newDay', day: this.world.day, yesterday });
+  }
+
+  // ---------- activities (Pass 4 step 3) ----------
+
+  isPlanned(hubId: number, slot: Slot): boolean {
+    return this.dayPlan.some((p) => p.hubId === hubId && p.slot === slot);
+  }
+
+  /** Add or remove a hub's session in a slot. Runs every day until removed. */
+  setPlanned(hubId: number, slot: Slot, on: boolean): { ok: true } | { ok: false; reason: string } {
+    const b = this.building(hubId);
+    const def = b && activityOf(b.kind);
+    if (!b || !def) return { ok: false, reason: 'That building runs no activities' };
+    if (on && def.route && !this.world.routeOf(hubId)) return { ok: false, reason: 'Draw a route first' };
+    this.dayPlan = this.dayPlan.filter((p) => !(p.hubId === hubId && p.slot === slot));
+    if (on) this.dayPlan.push({ hubId, slot });
+    return { ok: true };
+  }
+
+  activityPrice(hubId: number): PriceStep {
+    return this.activityPrices[hubId] ?? 2;
+  }
+
+  setActivityPrice(hubId: number, step: PriceStep): void {
+    this.activityPrices[hubId] = step;
+  }
+
+  /** Quality of a hub's session right now (0–100), before each guest's taste. */
+  sessionQuality(hubId: number): number {
+    const b = this.building(hubId);
+    const def = b && activityOf(b.kind);
+    if (!b || !def) return 0;
+    const q = routeQuality(this.world, this.world.routeOf(hubId), def, this.world.landmarks, this.appeal.at(b.x, b.y));
+    return Math.max(0, q - wearPenalty(conditionOf(b)));
+  }
+
+  /** Sign-ups two hours before each slot, departures at the start. */
+  private stepActivities(): void {
+    for (const slot of SLOTS) {
+      const start = SLOT_START[slot];
+      if (this.slotsDone[slot] < 1 && this.minutes >= start - SIGNUP_LEAD) {
+        this.slotsDone[slot] = 1;
+        this.signUps(slot);
+      }
+      if (this.slotsDone[slot] < 2 && this.minutes >= start) {
+        this.slotsDone[slot] = 2;
+        this.depart(slot);
+      }
+    }
+  }
+
+  private signUps(slot: Slot): void {
+    const entries = this.dayPlan.filter((p) => p.slot === slot);
+    for (const e of entries) {
+      const b = this.building(e.hubId);
+      const def = b && activityOf(b.kind);
+      if (!b || !def) continue;
+      const price = activityPrice(def, this.activityPrice(b.id));
+      const quality = this.sessionQuality(b.id);
+      let people = 0;
+      for (const g of this.guests) {
+        if (g.roomId === null || g.leaving || g.booking || g.state === 'gone' || g.state === 'arriving' || g.state === 'queued') continue;
+        if (people + g.size > def.capacity) continue;
+        const cost = price * g.size;
+        if (cost > g.wallet) continue;
+        const bored = 0.35 + 0.65 * ((100 - g.needs.fun) / 100);
+        // Word gets round: a better session draws more people.
+        const p = interestOf(g.type, def.kind) * (0.6 + 0.4 * bored) * (1 - 0.4 * (cost / g.wallet)) * (0.7 + quality / 200);
+        if (this.rng.next() < p) {
+          g.booking = { hubId: b.id, slot, phase: 'signed' };
+          people += g.size;
+        }
+      }
+    }
+  }
+
+  private depart(slot: Slot): void {
+    for (const e of this.dayPlan.filter((p) => p.slot === slot)) {
+      const b = this.building(e.hubId);
+      const def = b && activityOf(b.kind);
+      if (!b || !def) continue;
+      const booked = this.guests.filter((g) => g.booking?.hubId === b.id && g.booking.slot === slot);
+      const group = booked.filter((g) => g.booking!.phase === 'waiting');
+      const missed = booked.filter((g) => g.booking!.phase !== 'waiting');
+      for (const g of missed) {
+        g.booking = null;
+        addScore(this.scores(g), 'activities', 35);
+        this.remember(g, b.id, -4, `we missed the ${def.name.toLowerCase()}`);
+      }
+      const quality = this.sessionQuality(b.id);
+      const minutes = tripMinutes(def, this.world.routeOf(b.id));
+      const price = activityPrice(def, this.activityPrice(b.id));
+      let revenue = 0;
+      for (const g of group) {
+        const paid = Math.min(g.wallet, price * g.size);
+        g.wallet -= paid;
+        g.spentToday += paid;
+        revenue += paid;
+        g.booking!.phase = 'out';
+        g.timer = minutes / MINUTES_PER_SECOND;
+        g.thought = `Off on the ${def.name.toLowerCase()}!`;
+      }
+      if (revenue) {
+        this.world.earn(revenue);
+        this.today.spending += revenue;
+      }
+      this.trips.push({
+        hubId: b.id,
+        slot,
+        start: this.minutes,
+        end: this.minutes + minutes,
+        guestIds: group.map((g) => g.id),
+        people: group.reduce((s, g) => s + g.size, 0),
+        quality,
+        revenue,
+        missed: missed.length,
+      });
+    }
+  }
+
+  /** Back from a session: how it went feeds the Activities rating and their fun. */
+  private finishTrip(g: Guest, b: Building): void {
+    const def = activityOf(b.kind);
+    const trip = this.trips.find((t) => t.hubId === b.id && t.guestIds.includes(g.id));
+    g.booking = null;
+    if (!def || !trip) return;
+    const interest = interestOf(g.type, def.kind);
+    const score = trip.quality + (interest - 0.5) * 40;
+    addScore(this.scores(g), 'activities', score, 3);
+    g.needs.fun = Math.min(100, g.needs.fun + 40 + trip.quality * 0.3);
+    if (def.kind === 'yoga') g.needs.comfort = Math.min(100, g.needs.comfort + 20);
+    g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + (score - 50) / 8));
+    const route = this.world.routeOf(b.id);
+    const seen = route ? landmarksOn(route, this.world.landmarks) : [];
+    const name = def.name.toLowerCase();
+    if (score >= 70 && seen.length) this.remember(g, b.id, 9, `the ${name} to the ${seen[0].name.toLowerCase()} was unforgettable`);
+    else if (score >= 70) this.remember(g, b.id, 7, `we loved the ${name}`);
+    else if (score < 45) this.remember(g, b.id, -5, `the ${name} was a bit dull`);
+    g.thought = score >= 70 ? 'What a trip!' : score >= 50 ? 'That was nice.' : 'Meh.';
   }
 
   /** Start a scenario (or sandbox with null) on the current world. */
@@ -1202,6 +1401,16 @@ export class Sim {
     const b = this.building(goal.id);
     if (!b) return this.decide(g);
     if (goal.purpose === 'food') return this.arriveAtVenue(g, b);
+    if (goal.purpose === 'activity') {
+      if (g.booking?.hubId !== b.id || g.booking.phase !== 'going') return this.decide(g);
+      // Wait at the meeting point (inside, out of the way) until the session starts.
+      g.booking.phase = 'waiting';
+      g.state = 'inside';
+      g.insideId = b.id;
+      g.timer = OVERNIGHT;
+      g.thought = 'Waiting for the group to set off.';
+      return;
+    }
     g.state = 'inside';
     g.insideId = b.id;
     g.timer =
@@ -1344,6 +1553,8 @@ export class Sim {
       const v = this.venue(b.id);
       v.serving = Math.max(0, v.serving - 1);
       this.pullLine(b);
+    } else if (b && g.booking?.hubId === b.id && g.booking.phase === 'out') {
+      this.finishTrip(g, b);
     } else if (b && b.id === g.roomId) {
       g.needs.rest = Math.min(100, g.needs.rest + NAP_REST);
       g.needs.comfort = Math.max(g.needs.comfort, this.roomComfort(g));
@@ -1444,6 +1655,12 @@ export class Sim {
       g.leaving = true;
       g.thought = 'My room is gone!';
       return this.plan(g, { kind: 'dock' });
+    }
+    const bk = g.booking;
+    if (bk && bk.phase === 'signed' && this.minutes >= SLOT_START[bk.slot] - GATHER_LEAD && this.building(bk.hubId)) {
+      bk.phase = 'going';
+      g.thought = 'Time to meet the group!';
+      return this.plan(g, { kind: 'building', id: bk.hubId, purpose: 'activity' });
     }
     if (this.minutes >= (GUEST_TYPES[g.type].bedtime ?? EVENING))
       return this.plan(g, { kind: 'building', id: g.roomId, purpose: 'room' });
@@ -1597,7 +1814,10 @@ export class Sim {
   private reconcile(): void {
     this.stale = false;
     for (const id of Object.keys(this.venues).map(Number)) if (!this.building(id)) delete this.venues[id];
+    // A demolished hub drops out of the plan, and its bookings with it.
+    this.dayPlan = this.dayPlan.filter((p) => this.building(p.hubId));
     for (const g of this.guests) {
+      if (g.booking && !this.building(g.booking.hubId)) g.booking = null;
       if (g.state === 'inline' && (g.insideId === null || !this.building(g.insideId))) {
         g.insideId = null;
         g.state = 'walking';
@@ -1630,7 +1850,11 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 7,
+      version: 8,
+      plan: this.dayPlan.map((p) => ({ ...p })),
+      activityPrices: { ...this.activityPrices },
+      trips: structuredClone(this.trips),
+      slotsDone: { ...this.slotsDone },
       maintenance: this.maintenance,
       campaign: this.campaign ? this.campaign.snapshot() : null,
       redDays: this.redDays,
@@ -1653,8 +1877,12 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 7) throw new Error('Incompatible save');
+    if (s.version !== 8) throw new Error('Incompatible save');
     this.maintenance = s.maintenance;
+    this.dayPlan = s.plan.map((p) => ({ ...p }));
+    this.activityPrices = { ...s.activityPrices };
+    this.trips = structuredClone(s.trips);
+    this.slotsDone = { ...s.slotsDone };
     this.campaign?.dispose();
     this.campaign = s.campaign ? new Campaign(this, s.campaign.scenario, structuredClone(s.campaign)) : null;
     this.redDays = s.redDays;
@@ -1679,7 +1907,11 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 7,
+      version: 8,
+      plan: [],
+      activityPrices: {},
+      trips: [],
+      slotsDone: { morning: 0, afternoon: 0, evening: 0 },
       maintenance: 'normal',
       campaign: null,
       redDays: 0,

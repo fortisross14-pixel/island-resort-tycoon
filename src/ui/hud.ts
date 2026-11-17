@@ -1,3 +1,4 @@
+import { SLOTS, SLOT_NAMES, type Slot } from '../sim/activities';
 import { MAINTENANCE_LEVELS, MAINTENANCE_NAMES, type MaintenanceLevel } from '../sim/ratings';
 import { yearOf } from '../sim/calendar';
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, RATING_CATEGORIES, RATING_NAMES, type BuildingKind, type RatingCategory } from '../sim/buildings';
@@ -8,7 +9,25 @@ import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
 export type TrayItem = BuildingKind | 'path' | 'land';
 
+/** One activity hub in the Plan sheet (Pass 4 step 3). */
+export interface PlanRow {
+  hubId: number;
+  name: string;
+  activity: string;
+  icon: TrayItem;
+  quality: number;
+  /** Why it can't be planned yet (no route), or null. */
+  blocked: string | null;
+  slots: Record<Slot, boolean>;
+  /** Today's result per slot: people who went, or null if it hasn't run. */
+  went: Record<Slot, number | null>;
+  price: number;
+}
+
 export interface HudHandlers {
+  /** Toggle a hub's session in a slot, or open the hub (Plan sheet). */
+  onPlanToggle(hubId: number, slot: Slot): void;
+  onPlanOpen(hubId: number): void;
   /** Maintenance level picked in the ratings popover (Pass 4). */
   onMaintenance(level: MaintenanceLevel): void;
   onTrayDown(item: TrayItem, e: PointerEvent): void;
@@ -30,7 +49,7 @@ export interface HudHandlers {
 }
 
 /** Which sheet is open above the dock; 'none' leaves the island clear. */
-export type Tab = 'build' | 'guests' | 'research' | 'none';
+export type Tab = 'build' | 'guests' | 'plan' | 'research' | 'none';
 
 export type Category = 'paths' | 'rooms' | 'food' | 'fun' | 'services' | 'decor';
 
@@ -75,6 +94,10 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  trailHut: '<svg viewBox="0 0 32 32"><path d="M4 16 L16 6 L28 16Z" fill="#c9a35a"/><rect x="7" y="16" width="18" height="11" fill="#a8754a"/><rect x="14" y="20" width="4" height="7" fill="#7d5534"/><rect x="26" y="12" width="1.5" height="16" fill="#7d5534"/><rect x="24" y="12" width="6" height="3" fill="#2e9e4f"/></svg>',
+  yogaDeck: '<svg viewBox="0 0 32 32"><rect x="3" y="7" width="26" height="2" fill="#f3e6c8"/><rect x="4" y="9" width="2" height="16" fill="#7d5534"/><rect x="26" y="9" width="2" height="16" fill="#7d5534"/><rect x="3" y="24" width="26" height="3" fill="#c99a64"/><circle cx="16" cy="13" r="2.5" fill="#3a4a52"/><path d="M16 15.5 L16 20 M11 18 L21 18 M16 20 L12 23.5 M16 20 L20 23.5" stroke="#3a4a52" stroke-width="2" stroke-linecap="round"/></svg>',
+  kayakRental: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><ellipse cx="16" cy="21" rx="12" ry="3" fill="#ff7a59"/><rect x="15" y="9" width="2" height="14" fill="#555" transform="rotate(30 16 16)"/><rect x="10" y="7" width="5" height="3" rx="1" fill="#ffd23d" transform="rotate(30 16 16)"/></svg>',
+  excursionPier: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="7" fill="#6fd6d6"/><path d="M6 19 L26 19 L23 24 L9 24Z" fill="#fff"/><rect x="6" y="18" width="20" height="2" fill="#2e86c1"/><rect x="12" y="13" width="9" height="5" fill="#fff4e2"/><rect x="11" y="12" width="11" height="2" fill="#2e86c1"/><rect x="24" y="5" width="1.5" height="13" fill="#999"/><path d="M25.5 5 L30 7 L25.5 9Z" fill="#ff7a59"/></svg>',
   palmTree: '<svg viewBox="0 0 32 32"><path d="M15 29 C14 22 15 15 17 10" stroke="#9b6b43" stroke-width="2.5" fill="none"/><path d="M17 10 C12 6 7 7 4 11 C9 9 13 10 17 10Z M17 10 C17 5 14 2 10 2 C14 5 15 7 17 10Z M17 10 C21 6 25 6 28 8 C24 8 20 9 17 10Z M17 10 C22 11 25 14 26 18 C23 14 20 12 17 10Z" fill="#3f9a52"/></svg>',
   bench: '<svg viewBox="0 0 32 32"><rect x="5" y="16" width="22" height="3" fill="#a8754a"/><rect x="5" y="10" width="22" height="3" fill="#a8754a"/><rect x="7" y="19" width="2" height="7" fill="#7d5534"/><rect x="23" y="19" width="2" height="7" fill="#7d5534"/></svg>',
   lampPost: '<svg viewBox="0 0 32 32"><rect x="15" y="10" width="2" height="19" fill="#3a4a52"/><rect x="12" y="4" width="8" height="7" rx="1" fill="#f6d98b"/><rect x="11" y="3" width="10" height="2" fill="#3a4a52"/></svg>',
@@ -129,6 +152,7 @@ const UI: Record<string, string> = {
   star: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6L2.5 9.4l6.6-.8z" fill="#f2b62a" stroke="#8a5a00" stroke-width="1.2" stroke-linejoin="round"/></svg>',
   build: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l10 5-10 5L2 7zm-8.2 8.1L12 14.2l8.2-4.1L22 11l-10 5-10-5zm0 4L12 18.2l8.2-4.1L22 15l-10 5-10-5z"/></svg>',
   guests: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 2.2 8 5v3H4v-3c0-2.8 3.6-5 8-5z"/></svg>',
+  plan: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zM5 9v11h14V9zm2 2h4v3H7zm6 0h4v3h-4zm-6 5h4v2H7z"/></svg>',
   research: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 2h6v2h-1v5.3l5.6 9.5A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.2L10 9.3V4H9zm-1.6 15h9.2l-2.4-4H9.8z"/></svg>',
   goals: '<svg viewBox="0 0 24 24" class="ico"><path d="M6 3h12v2h3v3a4 4 0 0 1-4 4h-.3A6 6 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A6 6 0 0 1 7.3 12H7a4 4 0 0 1-4-4V5h3zm-1 4v1a2 2 0 0 0 1.4 1.9A6 6 0 0 1 6 8V7zm14 0h-1v1a6 6 0 0 1-.4 1.9A2 2 0 0 0 19 8z"/></svg>',
   play: '<svg viewBox="0 0 24 24" class="ico"><path d="M8 5l12 7-12 7z"/></svg>',
@@ -260,6 +284,9 @@ export class Hud {
             <p class="empty" data-empty>No one is waiting.</p>
           </div>
         </div>
+        <div class="pane" data-pane="plan" hidden>
+          <div class="cards plan-cards" data-plan-cards></div>
+        </div>
         <div class="pane" data-pane="research" hidden>
           <div class="cards">
             <div class="points"><b data-points>0</b><span>points</span></div>
@@ -271,6 +298,7 @@ export class Hud {
       <nav class="dock glass" aria-label="Main">
         <button data-dock="build">${UI.build}<span>Build</span></button>
         <button data-dock="guests">${UI.guests}<span>Guests</span><b class="dot" data-badge></b></button>
+        <button data-dock="plan">${UI.plan}<span>Plan</span></button>
         <button class="play" data-play aria-label="Pause">${UI.pause}</button>
         <button data-dock="research">${UI.research}<span>Research</span><b class="dot ok" data-rbadge></b></button>
         <button data-dock="goals" data-goals>${UI.goals}<span>Goals</span></button>
@@ -315,6 +343,13 @@ export class Hud {
       h.onSpeed(next);
     });
     q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
+    q('[data-plan-cards]').addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      const slot = t.closest<HTMLElement>('[data-slot]');
+      if (slot) return h.onPlanToggle(Number(slot.dataset.hub), slot.dataset.slot as Slot);
+      const open = t.closest<HTMLElement>('[data-open]');
+      if (open) h.onPlanOpen(Number(open.dataset.open));
+    });
     this.researchPane.addEventListener('click', (e) => {
       const c = (e.target as HTMLElement).closest<HTMLElement>('[data-node]');
       if (c) h.onResearch(c.dataset.node!);
@@ -498,7 +533,7 @@ export class Hud {
 
   setGoalsAvailable(on: boolean): void {
     this.root.querySelector<HTMLElement>('[data-goals]')!.hidden = !on;
-    this.root.querySelector('.dock')!.classList.toggle('four', !on);
+    this.root.querySelector('.dock')!.classList.toggle('five', !on);
   }
 
   setGoalsOpen(on: boolean): void {
@@ -513,6 +548,7 @@ export class Hud {
     this.buildPane.hidden = tab !== 'build';
     this.guestPane.hidden = tab !== 'guests';
     this.researchPane.hidden = tab !== 'research';
+    this.root.querySelector<HTMLElement>('[data-pane="plan"]')!.hidden = tab !== 'plan';
     this.root.classList.toggle('sheet-open', tab !== 'none');
     if (tab !== 'build') this.hideInfo();
   }
@@ -692,6 +728,25 @@ export class Hud {
     this.root.querySelector('[data-research-cards]')!.innerHTML = html;
   }
 
+  /** The Plan sheet: each activity hub with its three slots. */
+  setPlan(rows: PlanRow[]): void {
+    const html = rows.length
+      ? rows
+          .map((r) => {
+            const slots = SLOTS.map((sl) => {
+              const went = r.went[sl];
+              const label = went === null ? SLOT_NAMES[sl] : `${SLOT_NAMES[sl]} · ${went}`;
+              return `<button class="slot ${r.slots[sl] ? 'on' : ''}" data-slot="${sl}" data-hub="${r.hubId}" aria-pressed="${r.slots[sl]}" ${r.blocked ? 'disabled' : ''}>${label}</button>`;
+            }).join('');
+            const q = r.blocked ? `<span class="warn">${r.blocked}</span>` : `<span>Quality <b>${r.quality}</b> · ${UI.coin}${r.price} each</span>`;
+            return `<div class="card plan"><button class="plan-head" data-open="${r.hubId}"><span class="icon">${ICONS[r.icon]}</span><span><b>${r.activity}</b>${q}</span></button><div class="slots">${slots}</div></div>`;
+          })
+          .join('')
+      : '<p class="empty">Build a Trail Hut or Yoga Deck (Fun) to plan activities.</p>';
+    const el = this.root.querySelector<HTMLElement>('[data-plan-cards]')!;
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
   setLandPrice(price: number): void {
     const el = this.cards.get('land')?.querySelector('[data-price]');
     if (el) el.textContent = fmt(price);
@@ -701,12 +756,13 @@ export class Hud {
     this.cards.get(item)?.classList.toggle('poor', !ok);
   }
 
-  setActive(item: TrayItem | 'demolish' | null, canRotate: boolean): void {
+  setActive(item: TrayItem | 'demolish' | 'route' | null, canRotate: boolean): void {
     for (const [k, b] of this.cards) b.classList.toggle('active', k === item);
     this.demolishBtn.classList.toggle('active', item === 'demolish');
+    this.demolishBtn.hidden = item === 'route';
     this.rotateBtn.hidden = !canRotate;
     this.tools.classList.toggle('show', item !== null);
-    if (item && item !== 'demolish') this.revealCard(item);
+    if (item && item !== 'demolish' && item !== 'route') this.revealCard(item);
   }
 
   setUndo(enabled: boolean): void {

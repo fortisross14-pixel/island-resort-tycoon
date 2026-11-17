@@ -1,4 +1,5 @@
 import type { Layout, Plot, Tile } from './world';
+import type { Landmark } from './activities';
 
 /**
  * Hand-authored islands (Pass 4). Each map is three layers of text, one character per tile:
@@ -20,6 +21,8 @@ export interface IslandDef {
   dock: Tile;
   /** Plot letters you own at the start. */
   start: string[];
+  /** Places worth a hike or a boat trip (Pass 4 step 3). */
+  landmarks: Landmark[];
   terrain: string[];
   heights: string[];
   plots: string[];
@@ -35,6 +38,13 @@ export const ISLANDS: IslandDef[] = [
     scale: 'tiny',
     dock: { x: 13, y: 18 },
     start: ['A'],
+    landmarks: [
+      { x: 10, y: 7, kind: 'viewpoint', name: 'Coconut Peak' },
+      { x: 8, y: 6, kind: 'ruins', name: 'Old Lookout' },
+      { x: 19, y: 5, kind: 'turtles', name: 'Turtle Shallows' },
+      { x: 21, y: 7, kind: 'coral', name: 'Coral Garden' },
+      { x: 21, y: 17, kind: 'dolphins', name: 'Dolphin Point' },
+    ],
   terrain: [
     '~~~~~~~~~~~~~~~~~~~~~~~~',
     '~~~~~~~~~~~~~~~~~~~~~~~~',
@@ -122,6 +132,15 @@ export const ISLANDS: IslandDef[] = [
     scale: 'medium',
     dock: { x: 18, y: 29 },
     start: ['A'],
+    landmarks: [
+      { x: 9, y: 12, kind: 'waterfall', name: 'Twin Falls' },
+      { x: 6, y: 16, kind: 'ruins', name: 'Stone Circle' },
+      { x: 28, y: 10, kind: 'viewpoint', name: 'East Lookout' },
+      { x: 16, y: 14, kind: 'mangroves', name: 'Lagoon Mangroves' },
+      { x: 18, y: 2, kind: 'turtles', name: 'Turtle Reef' },
+      { x: 33, y: 22, kind: 'coral', name: 'Coral Garden' },
+      { x: 33, y: 27, kind: 'dolphins', name: 'Dolphin Bay' },
+    ],
   terrain: [
     '~~~~~~~~~~~~~~~~****~~~~~~~~~~~~~~~~',
     '~~~~~~~~~~~~~~~******~~~~~~~~~~~~~~~',
@@ -277,5 +296,6 @@ export function islandLayout(id: string): Layout {
     terrain: d.terrain.join(''),
     heights: d.heights.join('').replace(/\./g, '0'),
     plotMap: d.plots.join(''),
+    landmarks: d.landmarks.map((l) => ({ ...l })),
   };
 }
