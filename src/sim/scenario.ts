@@ -18,6 +18,8 @@ export type Metric =
   | 'plots'
   | 'families'
   | 'building'
+  /** Rooms (beds for a party), across all room buildings. */
+  | 'rooms'
   // The four resort ratings (Pass 4).
   | 'lodging'
   | 'amenities'
@@ -51,6 +53,8 @@ export interface ScenarioDef {
   medals: Record<MedalTier, Goal[]>;
   /** Multiplies how often each guest type arrives. */
   guestBias?: Partial<Record<string, number>>;
+  /** Opens after any one of these medals (Pass 4 step 4); none = open from the start. */
+  requires?: Array<{ mission: string; medal: MedalTier }>;
 }
 
 export const SCENARIOS: ScenarioDef[] = [
@@ -69,7 +73,7 @@ export const SCENARIOS: ScenarioDef[] = [
       silver: [
         { metric: 'served', target: 120, label: 'Serve 120 guests' },
         { metric: 'rating', target: 3.5, label: 'Reach a ★3.5 rating' },
-        { metric: 'research', target: 6, label: 'Research 6 topics' },
+        { metric: 'rooms', target: 6, label: 'Have 6 rooms' },
       ],
       gold: [
         { metric: 'served', target: 350, label: 'Serve 350 guests' },
@@ -80,9 +84,61 @@ export const SCENARIOS: ScenarioDef[] = [
     },
   },
   {
+    id: 'littleProfit',
+    name: 'A Little Profit',
+    island: 'coconutKey',
+    blurb: 'The bank wants to see the books. Keep costs down, fill the rooms, and turn Coconut Key into a business.',
+    startMoney: 12000,
+    days: 36,
+    requires: [{ mission: 'driftwood', medal: 'bronze' }],
+    medals: {
+      bronze: [
+        { metric: 'rooms', target: 6, label: 'Have 6 rooms' },
+        { metric: 'profit7', target: 6000, label: 'Make 6,000 profit over 7 months' },
+      ],
+      silver: [
+        { metric: 'profit7', target: 18000, label: 'Make 18,000 profit over 7 months' },
+        { metric: 'lodging', target: 3.2, label: 'Reach Lodging ★3.2' },
+      ],
+      gold: [
+        { metric: 'profit7', target: 32000, label: 'Make 32,000 profit over 7 months' },
+        { metric: 'rating', target: 3.6, label: 'Reach a ★3.6 rating' },
+        { metric: 'plots', target: 2, label: 'Buy 2 plots of land' },
+      ],
+    },
+  },
+  {
+    id: 'lagoonDays',
+    name: 'Lagoon Days',
+    island: 'twinPalms',
+    blurb: 'Calm water, two jungle hills and a waterfall. Guests come here to do things: give them days to remember.',
+    startMoney: 20000,
+    days: 36,
+    requires: [{ mission: 'driftwood', medal: 'silver' }],
+    medals: {
+      bronze: [
+        { metric: 'building', target: 1, building: 'trailHut', label: 'Build a Trail Hut' },
+        { metric: 'activities', target: 3, label: 'Reach Activities ★3.0' },
+      ],
+      silver: [
+        { metric: 'activities', target: 3.6, label: 'Reach Activities ★3.6' },
+        { metric: 'served', target: 150, label: 'Serve 150 guests' },
+      ],
+      gold: [
+        { metric: 'activities', target: 4.2, label: 'Reach Activities ★4.2' },
+        { metric: 'rating', target: 3.8, label: 'Reach a ★3.8 rating' },
+        { metric: 'decor', target: 3.4, label: 'Reach Decoration ★3.4' },
+      ],
+    },
+  },
+  {
     id: 'familyCove',
     name: 'Family Cove',
     island: 'twinPalms',
+    requires: [
+      { mission: 'driftwood', medal: 'gold' },
+      { mission: 'lagoonDays', medal: 'bronze' },
+    ],
     blurb: 'A calm bay where families come back year after year. Keep the kids busy and the walks short.',
     startMoney: 15000,
     days: 30,
@@ -211,6 +267,8 @@ export class Campaign {
         return this.state.families ?? 0;
       case 'building':
         return 0;
+      case 'rooms':
+        return this.sim.world.buildings.reduce((n, b) => n + this.sim.capacity(b), 0);
       case 'lodging':
       case 'amenities':
       case 'activities':
@@ -347,7 +405,9 @@ export class Campaign {
     const id = this.state.nextObjectiveId;
     const coins = Math.min(1500, 300 + day * 50);
     const research = 3 + Math.floor(day / 5);
-    const reward = this.rng.next() < 0.6 ? { coins } : { research };
+    // With research on the home screen (Pass 4), objectives always pay coins.
+    const roll = this.rng.next();
+    const reward = roll < 0.6 || this.sim.sharedResearch ? { coins: roll < 0.6 ? coins : research * 120 } : { research };
     const base = { id, progress: 0, reward, done: false, today: true };
     const kind = this.rng.pick<ObjectiveKind>(['sales', 'checkins', 'happy', 'spending', 'noGiveUps', 'build']);
     let o: Objective | null = null;

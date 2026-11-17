@@ -7,7 +7,9 @@ import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
 import { InfoPanel } from './ui/panel';
 import { NightReportView } from './ui/report';
-import { GoalsView, NewGameDialog, certificateHtml, type NewGameChoice } from './ui/goals';
+import { GoalsView, certificateHtml, type NewGameChoice } from './ui/goals';
+import { HomeScreen } from './ui/home';
+import { Profile, type ProfileData } from './sim/profile';
 import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
 import { islandLayout } from './sim/islands';
 
@@ -37,6 +39,7 @@ const SAVE_KEY = 'irt.save.v1';
 /** The save as it was at the start of the current day. */
 const BACKUP_KEY = 'irt.save.backup';
 const SETTINGS_KEY = 'irt.settings.v1';
+const PROFILE_KEY = 'irt.profile.v1';
 
 type Settings = { sound: boolean; reduceMotion: boolean };
 
@@ -90,7 +93,9 @@ export class Game {
   private panel: InfoPanel;
   private report: NightReportView;
   private goals: GoalsView;
-  private newGame: NewGameDialog;
+  private newGame: HomeScreen;
+  /** What carries over between missions: experience, research and medals (Pass 4 step 4). */
+  readonly profile: Profile;
   private certificate: HTMLElement;
   private speed: Speed = 1;
   private tickAcc = 0;
@@ -124,6 +129,9 @@ export class Game {
     const { save, discarded, note } = loadSave();
     this.world = save ? World.fromSnapshot(save.world) : World.onIsland(islandLayout(SCENARIOS[0].island));
     this.sim = new Sim(this.world);
+    this.profile = loadProfile(save?.sim?.research.done ?? []);
+    this.sim.research = this.profile.research;
+    this.sim.sharedResearch = true;
     let simLoaded = false;
     if (save?.sim) {
       try {
@@ -203,7 +211,16 @@ export class Game {
     });
     if (this.sim.night) this.report.show(this.sim.night);
     this.goals = new GoalsView(hudRoot, (open) => this.hud.setGoalsOpen(open));
-    this.newGame = new NewGameDialog(hudRoot, (c) => this.startNewGame(c));
+    this.newGame = new HomeScreen(
+      hudRoot,
+      this.profile,
+      {
+        onPlay: (c) => this.startNewGame(c),
+        onContinue: () => {},
+        onBuy: (id) => this.buyResearch(id),
+      },
+      () => ({ name: this.sim.campaign?.def.name ?? 'Sandbox', when: monthYear(this.world.day) }),
+    );
     this.coach = new Coach(hudRoot);
     this.certificate = document.createElement('div');
     this.certificate.className = 'report-backdrop';
@@ -747,15 +764,43 @@ export class Game {
           return this.hud.toast(`Goal done: ${e.objective.label} · ${r.coins ? `+${r.coins} coins` : `+${r.research} research`}`, 'good');
         }
         case 'medal':
+        {
           this.sfx.play('fanfare');
-          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, c.def.name, !this.settings.reduceMotion);
-        case 'finished':
-          this.certificate.innerHTML = certificateHtml(c);
+          const r = this.profile.awardMedal(c.def.id, e.tier);
+          this.saveProfile();
+          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, `${c.def.name} · +${r.xp} XP${r.first ? ', first time' : ''}`, !this.settings.reduceMotion);
+        }
+        case 'finished': {
+          const xp = this.profile.finishMission(c.def.id, this.sim.rating);
+          this.saveProfile();
+          this.certificate.innerHTML = certificateHtml(c, xp, this.profile.xp);
           this.certificate.hidden = false;
           this.save();
           return;
+        }
       }
     });
+  }
+
+  /** Research on the home screen, paid in experience; it applies to every resort. */
+  private buyResearch(id: string): void {
+    const r = this.profile.buy(id);
+    if (!r.ok) {
+      this.sfx.play('error');
+      return this.hud.toast(r.reason.replace(' points', ' XP'));
+    }
+    this.sfx.play('chime');
+    this.saveProfile();
+    this.refreshResearch(true);
+  }
+
+  private saveProfile(): void {
+    try {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(this.profile.data()));
+    } catch {
+      /* the save-failure notice covers this */
+    }
+    this.newGame.refresh();
   }
 
   private onMoneyChange(): void {
@@ -921,7 +966,7 @@ export class Game {
     const locked = this.hud.lockReason(item);
     if (locked) {
       this.sfx.play('error');
-      this.hud.toast(`${locked} (Research tab)`);
+      this.hud.toast(`${locked} (research on the home screen)`);
       return false;
     }
     this.sfx.play('tap');
@@ -1193,4 +1238,20 @@ function writeSave(s: SaveFile, backup = false): boolean {
   } catch {
     return false; // storage full or unavailable (private mode)
   }
+}
+
+/** The profile, or a fresh one; a first run after Pass 4 keeps the topics researched in the old save. */
+function loadProfile(imported: string[]): Profile {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw) as ProfileData;
+      if (d.version === 1) return new Profile(d);
+    }
+  } catch {
+    /* fall through to a fresh profile */
+  }
+  const p = new Profile();
+  for (const id of imported) p.research.done.add(id);
+  return p;
 }

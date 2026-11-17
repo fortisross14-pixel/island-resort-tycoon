@@ -256,7 +256,7 @@ export class Hud {
         <p class="keys" data-maintnote></p>
       </div>
       <div class="menu-pop glass" data-menupop hidden>
-        <button data-new>New island…</button>
+        <button data-new>Islands &amp; research…</button>
         <button data-sound aria-pressed="true">Sound <span>On</span></button>
         <button data-motion aria-pressed="false">Reduce motion <span>Off</span></button>
         <p class="keys">Keys: 1–9 build · R rotate · X demolish · L land · G guests · Space pause · Ctrl+Z undo</p>
@@ -298,9 +298,9 @@ export class Hud {
       <nav class="dock glass" aria-label="Main">
         <button data-dock="build">${UI.build}<span>Build</span></button>
         <button data-dock="guests">${UI.guests}<span>Guests</span><b class="dot" data-badge></b></button>
-        <button data-dock="plan">${UI.plan}<span>Plan</span></button>
         <button class="play" data-play aria-label="Pause">${UI.pause}</button>
-        <button data-dock="research">${UI.research}<span>Research</span><b class="dot ok" data-rbadge></b></button>
+        <button data-dock="plan">${UI.plan}<span>Plan</span></button>
+        <b class="dot ok" data-rbadge hidden></b>
         <button data-dock="goals" data-goals>${UI.goals}<span>Goals</span></button>
       </nav>
       <div class="chip-drag" data-chip></div>`;
@@ -509,7 +509,7 @@ export class Hud {
         : what === 'rating'
           ? this.ratingEl.parentElement!
           : what === 'research'
-            ? this.root.querySelector<HTMLElement>('[data-dock="research"]')!
+            ? this.root.querySelector<HTMLElement>('[data-menu]')!
             : this.root.querySelector<HTMLElement>('[data-dock="guests"]')!;
     el.classList.remove('bump');
     void el.offsetWidth; // restart the animation

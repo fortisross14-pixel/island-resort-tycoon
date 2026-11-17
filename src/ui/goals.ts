@@ -164,7 +164,7 @@ export class NewGameDialog {
 }
 
 /** End-of-scenario certificate. */
-export function certificateHtml(c: Campaign): string {
+export function certificateHtml(c: Campaign, xp = 0, totalXp = 0): string {
   const m = c.state.finished;
   const title = !m || m === 'none' ? 'No medal this time' : `${MEDAL_ICON[m]} ${MEDAL_NAMES[m]} medal`;
   const won = MEDALS.filter((t) => c.state.medals[t] !== undefined)
@@ -173,7 +173,8 @@ export function certificateHtml(c: Campaign): string {
   return `<section class="report certificate" role="dialog" aria-label="Scenario complete">
     <header><small>${c.def.name}</small><h2>${title}</h2><p>${c.state.served} guests served · ★${c.metric('rating').toFixed(1)}</p></header>
     <ul class="lines">${won || '<li class="muted">Try again: the bronze goals are a good first target.</li>'}</ul>
-    <button class="start" data-keep>Keep playing</button>
-    <button class="cancel" data-new>New island</button>
+    <p class="xp-line">${xp ? `+${xp} XP for the final rating · ` : ''}⭐ ${totalXp} XP to spend on research</p>
+    <button class="start" data-new>Back to the islands</button>
+    <button class="cancel" data-keep>Keep playing this resort</button>
   </section>`;
 }

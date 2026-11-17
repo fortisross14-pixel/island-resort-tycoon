@@ -253,9 +253,17 @@ campaign map with shared research ties the missions together.
    and hikers move along the route), pay per person, and judge the trip for the Activities
    rating; a trip counts three times as much as a stroll. The Dive Shop and Marina stay
    walk-in venues for now.
-4. **Home screen and progression.** An archipelago map with missions as a roadmap, experience
+4. ✅ **Home screen and progression.** An archipelago map with missions as a roadmap, experience
    and first-medal bonuses, global research and perks, a profile save separate from each
    resort, and the sandbox unlock.
+   Done: the Archipelago home screen (island minimaps drawn from their terrain, missions with
+   their medal goals, a Continue button), XP from medals (first bronze 30, silver 50, gold 80;
+   repeats 5, 8, 12; a little more for the final rating), research bought with XP on the home
+   screen and shared by every resort (reviews no longer earn research; daily objectives always
+   pay coins; a Research Office adds 2 XP a month), a profile save of its own, missions that
+   open after a listed medal, and the sandbox after bronze on two missions. New missions: A
+   Little Profit (Coconut Key) and Lagoon Days (Twin Palms). Driftwood's silver now asks for 6
+   rooms instead of 6 research topics.
 5. **Islands and missions.** Old Harbour (a run-down resort to renovate), Far Sands (a great
    beach far from the dock: beach club, boardwalk, shuttle) and Emerald Reef (jungle and reef,
    the advanced missions), each with two to four missions, balanced with the playtest harness

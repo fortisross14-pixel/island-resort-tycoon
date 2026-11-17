@@ -33,7 +33,7 @@ npm run build      # type-check and build to dist/
 | Pause / speed | the round button in the dock; the 1×/2×/4× chip next to the clock | `Space` pauses |
 | Check in a guest | **Guests** in the dock: drag a card onto a room, or tap a card then a room | same; `G` toggles the sheet |
 | Building details | the ⓘ on a card, or long-press the card | Tab to a card, `I` |
-| Sound, reduce motion, new island | the ••• menu | `Esc` closes the top layer |
+| Islands, research, sound, reduce motion | the ••• menu | `Esc` closes the top layer |
 
 Tap a guest or a building with no tool selected to open its panel. A venue's panel sets its price; a room's panel sets the nightly rate. At 23:00 the night report appears: tap a review to see where it happened, then **Start day** (or Enter).
 
@@ -60,6 +60,8 @@ src/
   ui/hud.ts   DOM overlay (Lagoon Glass): top chips, dock, build/guest/research sheet, toasts
   ui/sfx.ts   synthesized sound effects (WebAudio)
   ui/coach.ts guided first day
+  ui/home.ts  the Archipelago home screen: missions, XP and research
+  sim/profile.ts    experience, shared research, medals and mission unlocks
   sim/save.ts save parsing and the version migration chain
   sim/islands.ts    authored islands: terrain, heights and plots as text maps
   sim/calendar.ts   months and years for the clock and reports

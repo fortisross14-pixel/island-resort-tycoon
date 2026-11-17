@@ -21,6 +21,9 @@ import {
 } from './needs';
 import { PathGraph, UNREACHABLE } from './pathGraph';
 import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './research';
+
+/** Experience a Research Office adds each month once research lives on the home screen. */
+const OFFICE_XP = 2;
 import { categoryRating, rating, reviewText, starsFor, type Memory, type Review } from './reviews';
 import {
   AppealMap,
@@ -488,7 +491,9 @@ export class Sim {
   night: NightReport | null = null;
   /** The game pauses on the night report; headless runs carry straight on. */
   pauseAtNight = false;
-  readonly research = new Research();
+  research = new Research();
+  /** Research belongs to the player's profile (Pass 4): don't load it from resort saves or earn it from reviews. */
+  sharedResearch = false;
   /** Monthly maintenance spend: more slows wear (Pass 4). */
   maintenance: MaintenanceLevel = 'normal';
   /** The day plan: which hub runs in which slot (repeats every day). */
@@ -839,7 +844,8 @@ export class Sim {
     }
 
     const offices = this.world.buildings.filter((b) => b.kind === 'researchOffice').length;
-    if (offices) this.addResearch(offices * OFFICE_POINTS);
+    // With research on the home screen, an office earns a little experience instead.
+    if (offices) this.addResearch(this.sharedResearch ? offices * OFFICE_XP : offices * OFFICE_POINTS);
 
     // Parties whose stay is over check out in the morning; they write their review tonight.
     let checkingOut = 0;
@@ -1154,7 +1160,7 @@ export class Sim {
     const review: Review = { id: this.nextReviewId++, day: this.day, guestType: g.type, stars, text, buildingId, cats };
     this.reviews.push(review);
     // GDD: "Research Points come from guest reviews (each star = 1 point)".
-    this.addResearch(stars);
+    if (!this.sharedResearch) this.addResearch(stars);
     if (this.reviews.length > 500) this.reviews.splice(0, this.reviews.length - 500);
     this.emit({ type: 'review', review });
   }
@@ -1888,7 +1894,7 @@ export class Sim {
     this.redDays = s.redDays;
     this.investor = s.investor ? { ...s.investor } : null;
     this.offer = s.offer ? { ...s.offer } : null;
-    this.research.restore(s.research);
+    if (!this.sharedResearch) this.research.restore(s.research);
     this.progression = s.progression;
     this.reviews = structuredClone(s.reviews);
     this.nextReviewId = s.nextReviewId;
