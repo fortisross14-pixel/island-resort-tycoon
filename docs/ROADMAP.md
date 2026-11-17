@@ -23,6 +23,7 @@ are deliberately left rough.
 | Pass 1 | Depth and scenarios | **Done** |
 | Pass 2 | Balance | **Done** |
 | Pass 3 | Graphics, visuals and GUI | **Done** (Lagoon Glass) |
+| Pass 4 | Islands, ratings, activities and the campaign | **In progress** (steps below) |
 
 ---
 
@@ -195,3 +196,63 @@ Second cut:
 
 Left for later: a string table for translations, GDD neighbour appeal for fun venues (a design
 change, not a visual one) and numbers from a real mid-range phone.
+
+## Pass 4 — Islands, ratings, activities and the campaign
+
+The island stops being a square with a beach ring. Each island is authored with its own shape,
+heights, water and jungle, and carries several missions. The resort is judged on four ratings, and a
+campaign map with shared research ties the missions together.
+
+### Decisions
+
+- **Time:** one in-game "day" becomes a **month**; the clock ticks days of the month. A year is
+  12 months, so "by year 3" means within 36 months (about two hours of play). The sun and night
+  cycle stays as an indicative rhythm through each month, as in Cities: Skylines.
+- **Resort ratings** are out of 5 with one decimal, like map reviews: **Lodging**, **Amenities**,
+  **Activities**, **Decoration** and an **Overall** weighted by the guest mix. Excelling at all
+  four is hard on purpose; each mission and budget favours a different balance.
+- **Missions** (also called scenarios) award **bronze, silver and gold**, each with a short list
+  of clear goals.
+- **Experience** carries between missions. A first bronze, first silver and first gold on a
+  mission each pay a large amount; repeating a medal you already hold pays a little.
+- **Unlocks** work like a roadmap: a few missions are always open, and gold medals open more.
+  The sandbox opens after the beginner missions.
+- **Research** lives on the home screen and applies to every resort; it is bought with
+  experience.
+
+### Steps
+
+1. **Calendar and terrain.** Months and years on the clock and in reports. Islands as data:
+   terrain per tile (deep and shallow sea, reef, lagoon, sand, grass, jungle, rock), heights 0–3
+   with stairs between neighbouring levels and cliffs elsewhere, irregular plots to buy, and
+   the dock. Two islands to start: **Coconut Key** (tiny) and **Twin Palms** (medium, with an
+   interior lagoon). The current missions move onto them.
+2. **Ratings, decoration and maintenance.** The four ratings and the overall; a decor catalogue
+   (palms, flower beds, tiki torches, lamp posts, benches, hammocks, beach chairs, signs) with
+   an appeal radius and Hawaiian and Caribbean themes; condition on every building and decor
+   item, a monthly maintenance budget and repairs.
+3. **Activities and the planner.** Dive shop and excursion pier, trail hut, yoga deck and kayak
+   rental; jungle trails and boat routes drawn through points of interest; a planner with
+   morning, afternoon and evening slots; guests sign up by interest and budget.
+4. **Home screen and progression.** An archipelago map with missions as a roadmap, experience
+   and first-medal bonuses, global research and perks, a profile save separate from each
+   resort, and the sandbox unlock.
+5. **Islands and missions.** Old Harbour (a run-down resort to renovate), Far Sands (a great
+   beach far from the dock: beach club, boardwalk, shuttle) and Emerald Reef (jungle and reef,
+   the advanced missions), each with two to four missions, balanced with the playtest harness
+   so beginner golds are easy, the middle needs replays and research, and advanced bronzes are
+   a real challenge.
+
+### Planned missions
+
+| Island | Mission | Goals (bronze → gold raise the bar) |
+|---|---|---|
+| Coconut Key | First Guests | 3 rooms and Lodging ★X by the end of year 3 |
+| Coconut Key | Little Profit | A profitable year with 6 rooms |
+| Twin Palms | Lagoon Days | Activities ★Y (kayaks, yoga) |
+| Twin Palms | Family Cove | Families hosted, a Kids' Club, rating and profit |
+| Old Harbour | New Paint | Lodging from ★1.5 to ★3.5: research, demolish, rebuild, wait for reviews |
+| Far Sands | The Long Beach | A beach club, boardwalk and shuttle so the beach counts |
+| Far Sands | Picture Perfect | Decoration ★4 |
+| Emerald Reef | Into the Blue | Activities ★4.5 with sea and jungle excursions |
+| Emerald Reef | Five-Star Island | ★4 in every rating |

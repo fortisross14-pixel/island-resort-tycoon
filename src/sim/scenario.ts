@@ -56,7 +56,7 @@ export const SCENARIOS: ScenarioDef[] = [
       gold: [
         { metric: 'served', target: 350, label: 'Serve 350 guests' },
         { metric: 'rating', target: 4.2, label: 'Reach a ★4.2 rating' },
-        { metric: 'profit7', target: 40000, label: 'Make 40,000 profit over 7 days' },
+        { metric: 'profit7', target: 40000, label: 'Make 40,000 profit over 7 months' },
         { metric: 'plots', target: 3, label: 'Buy 3 plots of land' },
       ],
     },
@@ -81,7 +81,7 @@ export const SCENARIOS: ScenarioDef[] = [
       gold: [
         { metric: 'families', target: 100, label: 'Host 100 families' },
         { metric: 'rating', target: 4.2, label: 'Reach a ★4.2 rating' },
-        { metric: 'profit7', target: 35000, label: 'Make 35,000 profit over 7 days' },
+        { metric: 'profit7', target: 35000, label: 'Make 35,000 profit over 7 months' },
       ],
     },
   },
@@ -333,24 +333,24 @@ export class Campaign {
         if (!kinds.length) return null;
         const k = this.rng.pick(kinds);
         const target = 4 + Math.floor(day / 2);
-        o = { ...base, kind, building: k, target, label: `Sell ${target} at the ${BUILDINGS[k].name} today` };
+        o = { ...base, kind, building: k, target, label: `Sell ${target} at the ${BUILDINGS[k].name} this month` };
         break;
       }
       case 'checkins': {
         const target = Math.max(3, Math.min(10, 2 + Math.floor(day / 2)));
-        o = { ...base, kind, target, label: `Check in ${target} parties today` };
+        o = { ...base, kind, target, label: `Check in ${target} parties this month` };
         break;
       }
       case 'happy':
-        o = { ...base, kind, target: 90, label: 'Get a guest to 90 satisfaction today' };
+        o = { ...base, kind, target: 90, label: 'Get a guest to 90 satisfaction this month' };
         break;
       case 'spending': {
         const target = 150 + day * 40;
-        o = { ...base, kind, target, label: `Guests spend ${target} at venues today` };
+        o = { ...base, kind, target, label: `Guests spend ${target} at venues this month` };
         break;
       }
       case 'noGiveUps':
-        o = { ...base, kind, target: 1, label: 'Nobody gives up waiting today' };
+        o = { ...base, kind, target: 1, label: 'Nobody gives up waiting this month' };
         break;
       case 'build': {
         const options = (Object.keys(BUILDINGS) as BuildingKind[]).filter(

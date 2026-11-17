@@ -1,3 +1,4 @@
+import { duration, monthName, monthYear } from '../sim/calendar';
 import type { Review } from '../sim/reviews';
 import { GUEST_TYPES, type GuestType, type NightLine, type NightReport } from '../sim/sim';
 
@@ -46,7 +47,7 @@ export class NightReportView {
     this.pill = document.createElement('button');
     this.pill.className = 'report-pill';
     this.pill.hidden = true;
-    this.pill.textContent = 'Back to the night report';
+    this.pill.textContent = 'Back to the monthly report';
     this.pill.addEventListener('click', () => this.restore());
     root.appendChild(this.pill);
     this.el.addEventListener('click', (e) => {
@@ -81,13 +82,13 @@ export class NightReportView {
               `<li${rv.buildingId !== null ? ` data-review="${rv.id}" class="link" title="Show on the map"` : ''}><span class="stars">${starsText(rv.stars)}</span><span>“${rv.text}”</span><small>${GUEST_TYPES[rv.guestType as GuestType]?.name ?? rv.guestType}</small></li>`,
           )
           .join('')
-      : '<li class="muted">No one checked out today.</li>';
+      : '<li class="muted">No one checked out this month.</li>';
     this.el.innerHTML = `
       <section class="report" role="dialog" aria-label="Night report">
         <header>
-          <small>End of day ${r.day}</small>
+          <small>${monthYear(r.day)}</small>
           <h2 class="${r.profit < 0 ? 'neg' : ''}">${coin}${money(r.profit)}</h2>
-          <p>${r.profit >= 0 ? 'Profit today' : 'Loss today'}</p>
+          <p>${r.profit >= 0 ? 'Profit this month' : 'Loss this month'}</p>
         </header>
         <div class="cols">
           <div>
@@ -109,18 +110,18 @@ export class NightReportView {
         </div>
         ${
           r.offer
-            ? `<div class="offer"><b>An investor calls.</b> After three days in the red, they offer <b>${coin}${r.offer.cash.toLocaleString('en-US')}</b> now for <b>${Math.round(r.offer.share * 100)}%</b> of your income for ${r.offer.days} days.
+            ? `<div class="offer"><b>An investor calls.</b> After three months in the red, they offer <b>${coin}${r.offer.cash.toLocaleString('en-US')}</b> now for <b>${Math.round(r.offer.share * 100)}%</b> of your income for ${duration(r.offer.days)}.
               <div><button data-accept>Accept</button><button data-decline>No thanks</button></div></div>`
             : ''
         }
         ${
           r.objectives
-            ? `<h3>Today’s goals</h3><ul class="lines">${r.objectives.map((o) => `<li><span>${o.done ? '✓' : '✗'} ${o.label}</span></li>`).join('')}</ul>`
+            ? `<h3>This month’s goals</h3><ul class="lines">${r.objectives.map((o) => `<li><span>${o.done ? '✓' : '✗'} ${o.label}</span></li>`).join('')}</ul>`
             : ''
         }
         <h3>Reviews</h3>
         <ul class="reviews">${reviews}</ul>
-        <button class="start" data-start>Start day ${r.day + 1} ▸</button>
+        <button class="start" data-start>Start ${monthName(r.day + 1)} ▸</button>
       </section>`;
     this.el.hidden = false;
     this.pill.hidden = true;

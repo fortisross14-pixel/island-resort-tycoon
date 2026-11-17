@@ -14,6 +14,7 @@ import { WorldView } from './render/worldView';
 import { setWindowGlow } from './render/models';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
 import { Sound } from './ui/sfx';
+import { monthYear } from './sim/calendar';
 import { Coach, type CoachState } from './ui/coach';
 import type { HighlightTone, RoomMark } from './render/worldView';
 
@@ -297,7 +298,7 @@ export class Game {
     switch (e.type) {
       case 'ferryArriving':
         this.sfx.play('horn');
-        return this.hud.toast('The morning ferry is coming in', 'info');
+        return this.hud.toast('The ferry is coming in', 'info');
       case 'ferryDocked':
         if (e.guests === 0) return;
         this.setTab('guests');
@@ -328,7 +329,7 @@ export class Game {
         this.save();
         return;
       case 'newDay':
-        this.hud.toast(`Day ${e.day}: the ferry arrives at 08:00`, 'info');
+        this.hud.toast(`${monthYear(e.day)}: the ferry docks early in the month`, 'info');
         this.save(true);
         return;
     }
@@ -565,7 +566,7 @@ export class Game {
     this.save();
     if ('scenario' in choice && choice.tutorial) return this.startCoach();
     this.coach.finish();
-    this.hud.toast(scenario ? `${scenario.name}: build rooms and paths before the 08:00 ferry` : 'Sandbox: everything is unlocked', 'info');
+    this.hud.toast(scenario ? `${scenario.name}: build rooms and paths before the first ferry` : 'Sandbox: everything is unlocked', 'info');
   }
 
   /** Listen to the current scenario for medals, objectives and the end. */
@@ -999,7 +1000,7 @@ function loadSave(): { save: SaveFile | null; discarded: boolean; note: string }
   const main = parseSave(readKey(SAVE_KEY));
   if (main.ok) return { save: main.save, discarded: false, note: main.migrated ? 'Your save was upgraded to this version' : '' };
   const backup = parseSave(readKey(BACKUP_KEY));
-  if (backup.ok) return { save: backup.save, discarded: false, note: 'The last save was damaged: restored this morning’s copy' };
+  if (backup.ok) return { save: backup.save, discarded: false, note: 'The last save was damaged: restored the copy from the start of the month' };
   return { save: null, discarded: main.reason === 'too-old', note: '' };
 }
 

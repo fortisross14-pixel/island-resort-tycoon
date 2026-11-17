@@ -1,3 +1,4 @@
+import { dateText, duration } from './calendar';
 import { BUILDINGS } from './buildings';
 import { AUTO_PENALTY, accessOf, matchScore, roomTier, type Match, type Wish } from './match';
 import {
@@ -521,10 +522,9 @@ export class Sim {
     return this.world.day;
   }
 
-  /** "08:05" for the HUD. */
+  /** "Mar 14" for the HUD: each schedule day is a month (Pass 4). */
   get clockText(): string {
-    const m = Math.floor(this.minutes);
-    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return dateText(this.world.day, this.minutes);
   }
 
   get onIsland(): number {
@@ -706,7 +706,7 @@ export class Sim {
         buildingId: null,
         name: 'Investor share',
         amount: -investorCut,
-        detail: `${Math.round(this.investor.share * 100)}% of income, ${this.investor.daysLeft} days left`,
+        detail: `${Math.round(this.investor.share * 100)}% of income, ${duration(this.investor.daysLeft)} left`,
       });
       if (this.investor.daysLeft <= 0) this.investor = null;
     }

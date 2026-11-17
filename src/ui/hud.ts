@@ -1,3 +1,4 @@
+import { yearOf } from '../sim/calendar';
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
 import { nodeFor } from '../sim/research';
 import { WISHES, type Wish } from '../sim/match';
@@ -202,7 +203,7 @@ export class Hud {
       <header class="top">
         <div class="chip glass" title="Coins">${UI.coin}<b data-coins>0</b></div>
         <div class="chip glass" title="Star rating: average of the last 50 reviews">${UI.star}<b data-rating>2.5</b></div>
-        <div class="chip glass clock" title="Day and time">
+        <div class="chip glass clock" title="Year and date">
           <span class="day" data-day>D1</span><b data-time>07:00</b>
           <button class="speed" data-speedcycle aria-label="Game speed">1×</button>
         </div>
@@ -234,7 +235,7 @@ export class Hud {
           <div class="cards">
             <button class="card auto" data-auto title="Place everyone in their best free room (−10 match)">${UI.auto}<b>Auto</b></button>
             <div class="guest-cards" data-guest-cards></div>
-            <p class="empty" data-empty>No one is waiting. The ferry docks at 08:00.</p>
+            <p class="empty" data-empty>No one is waiting. The ferry docks early each month.</p>
           </div>
         </div>
         <div class="pane" data-pane="research" hidden>
@@ -373,10 +374,10 @@ export class Hud {
 
   // ---------- top bar ----------
 
-  setClock(day: number, time: string, _guests: number): void {
-    const d = `D${day}`;
+  setClock(month: number, date: string, _guests: number): void {
+    const d = `Y${yearOf(month)}`;
     if (this.dayEl.textContent !== d) this.dayEl.textContent = d;
-    if (this.timeEl.textContent !== time) this.timeEl.textContent = time;
+    if (this.timeEl.textContent !== date) this.timeEl.textContent = date;
   }
 
   setRating(stars: number): void {

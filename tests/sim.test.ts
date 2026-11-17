@@ -73,16 +73,19 @@ describe('PathGraph', () => {
 });
 
 describe('Sim', () => {
-  it('runs the clock from 07:00 and rolls over to the next day', () => {
+  it('runs the month from the 1st and rolls over to the next month', () => {
     const w = starterResort();
     const sim = new Sim(w);
     const days: number[] = [];
     sim.on((e: SimEvent) => e.type === 'newDay' && days.push(e.day));
-    expect(sim.clockText).toBe('07:00');
-    runHours(sim, 16.1);
+    expect(sim.clockText).toBe('Jan 1');
+    runHours(sim, 8);
+    expect(sim.clockText).toBe('Jan 16');
+    runHours(sim, 8.1);
     expect(days).toEqual([2]);
     expect(w.day).toBe(2);
     expect(sim.minutes).toBeLessThan(DAY_START + 10);
+    expect(sim.clockText).toBe('Feb 1');
   });
 
   it('brings the ferry at 08:00 and lands day 1 guests', () => {

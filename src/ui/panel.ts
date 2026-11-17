@@ -134,7 +134,7 @@ export class InfoPanel {
     return `
       ${pricing}
       <dl>
-        <dt>Today</dt><dd>${free ? `${v.visitsToday} visits` : `${v.visitsToday} sold · ${coin}${v.revenueToday}`}</dd>
+        <dt>This month</dt><dd>${free ? `${v.visitsToday} visits` : `${v.visitsToday} sold · ${coin}${v.revenueToday}`}</dd>
         <dt>Lost</dt><dd>${v.lostToday} walked away</dd>
         <dt>Now</dt><dd>${v.serving} of ${def.capacity} served · ${v.line.length} in line</dd>
         <dt>Fills</dt><dd>${NEED_LABELS[def.need]} +${def.gain}</dd>

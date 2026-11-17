@@ -57,3 +57,17 @@ describe('saves', () => {
     expect(parseSave(JSON.stringify({ version: 1, size: 10, paths: [], buildings: [], money: 1 }))).toEqual({ ok: false, reason: 'too-old' });
   });
 });
+
+import { dateText, duration, monthYear, yearOf } from '../src/sim/calendar';
+
+describe('calendar', () => {
+  it('shows each schedule day as a month', () => {
+    expect(dateText(1, 7 * 60)).toBe('Jan 1');
+    expect(dateText(14, 23 * 60)).toBe('Feb 30');
+    expect(monthYear(13)).toBe('January, year 2');
+    expect(yearOf(36)).toBe(3);
+    expect(yearOf(37)).toBe(4);
+    expect(duration(30)).toBe('2 years 6 months');
+    expect(duration(12)).toBe('1 year');
+  });
+});

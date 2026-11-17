@@ -25,9 +25,9 @@ const STEPS: Step[] = [
   { text: 'Tap Build, pick Paths, then draw a footpath from the dock', target: 'build', done: (s) => s.newPaths >= 3 },
   { text: 'Build a Basic Room beside your path (Rooms)', target: 'build', done: (s) => s.rooms >= 1 },
   { text: 'Guests get hungry: add a Snack Bar (Food)', target: 'build', done: (s) => s.food >= 1 },
-  { text: 'Press play. The ferry docks at 08:00', target: 'play', done: (s) => s.arrived },
+  { text: 'Press play. The ferry docks early in the month', target: 'play', done: (s) => s.arrived },
   { text: 'Open Guests and drag a party onto a room', target: 'guests', done: (s) => s.checkedIn >= 1 },
-  { text: 'Guests now spend and review. At 23:00 you get the day’s report', target: null, done: (s) => s.night },
+  { text: 'Guests now spend and review. At the end of the month you get a report', target: null, done: (s) => s.night },
 ];
 
 const DONE_KEY = 'irt.coach.done';

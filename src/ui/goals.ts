@@ -1,3 +1,4 @@
+import { duration, monthYear } from '../sim/calendar';
 import { MEDALS, MEDAL_NAMES, SCENARIOS, type Campaign, type MedalTier } from '../sim/scenario';
 
 const MEDAL_ICON: Record<MedalTier, string> = { bronze: '🥉', silver: '🥈', gold: '🥇' };
@@ -63,9 +64,9 @@ export class GoalsView {
       ? c.state.finished === 'none'
         ? 'Scenario over'
         : `${MEDAL_NAMES[c.state.finished]} medal`
-      : `${c.daysLeft} day${c.daysLeft === 1 ? '' : 's'} left`;
+      : `${duration(c.daysLeft)} left`;
     const done = c.state.objectives.filter((o) => o.done).length;
-    const pill = `<span class="medal">${best ? MEDAL_ICON[best] : '🎯'}</span><b>${c.def.name}</b><span>${status}</span><span class="obj">${done}/${c.state.objectives.length} goals today</span>`;
+    const pill = `<span class="medal">${best ? MEDAL_ICON[best] : '🎯'}</span><b>${c.def.name}</b><span>${status}</span><span class="obj">${done}/${c.state.objectives.length} goals this month</span>`;
     if (this.pill.innerHTML !== pill) this.pill.innerHTML = pill;
     if (!this.openPanel) return;
 
@@ -78,7 +79,7 @@ export class GoalsView {
           return `<li class="${ok ? 'ok' : ''}"><span>${ok ? '✓' : '○'} ${g.label}</span><em>${fmt(Math.min(v, g.target), g.metric)} / ${fmt(g.target, g.metric)}</em></li>`;
         })
         .join('');
-      return `<section class="tier ${won !== undefined ? 'won' : ''}"><h4>${MEDAL_ICON[t]} ${MEDAL_NAMES[t]}${won !== undefined ? ` <small>won on day ${won}</small>` : ''}</h4><ul>${goals}</ul></section>`;
+      return `<section class="tier ${won !== undefined ? 'won' : ''}"><h4>${MEDAL_ICON[t]} ${MEDAL_NAMES[t]}${won !== undefined ? ` <small>won in ${monthYear(won)}</small>` : ''}</h4><ul>${goals}</ul></section>`;
     }).join('');
     const objectives = c.state.objectives
       .map((o) => {
@@ -88,9 +89,9 @@ export class GoalsView {
       })
       .join('');
     const html = `<header><b>${c.def.name}</b><button class="x" aria-label="Close">✕</button></header>
-      <p class="muted">${status} · day ${Math.min(c.def.days, c.def.days - c.daysLeft + 1)} of ${c.def.days}</p>
+      <p class="muted">${status} · month ${Math.min(c.def.days, c.def.days - c.daysLeft + 1)} of ${c.def.days}</p>
       ${tiers}
-      <h4>Today’s goals</h4><ul class="objectives">${objectives}</ul>`;
+      <h4>This month’s goals</h4><ul class="objectives">${objectives}</ul>`;
     if (this.panel.innerHTML !== html) this.panel.innerHTML = html;
   }
 }
@@ -142,7 +143,7 @@ export class NewGameDialog {
       (s) => `<button class="choice" data-scenario="${s.id}">
         <b>${s.name}</b><span>${s.blurb}</span>
         <ul>${MEDALS.map((t) => `<li>${MEDAL_ICON[t]} ${s.medals[t].map((g) => g.label).join(', ')}</li>`).join('')}</ul>
-        <small>${s.days} days · ${s.startMoney.toLocaleString('en-US')} coins · research unlocks buildings</small>
+        <small>${duration(s.days)} · ${s.startMoney.toLocaleString('en-US')} coins · research unlocks buildings</small>
       </button>`,
     ).join('');
     this.el.innerHTML = `<section class="report newgame" role="dialog" aria-label="New game">
@@ -166,7 +167,7 @@ export function certificateHtml(c: Campaign): string {
   const m = c.state.finished;
   const title = !m || m === 'none' ? 'No medal this time' : `${MEDAL_ICON[m]} ${MEDAL_NAMES[m]} medal`;
   const won = MEDALS.filter((t) => c.state.medals[t] !== undefined)
-    .map((t) => `<li>${MEDAL_ICON[t]} ${MEDAL_NAMES[t]}: day ${c.state.medals[t]}</li>`)
+    .map((t) => `<li>${MEDAL_ICON[t]} ${MEDAL_NAMES[t]}: ${monthYear(c.state.medals[t]!)}</li>`)
     .join('');
   return `<section class="report certificate" role="dialog" aria-label="Scenario complete">
     <header><small>${c.def.name}</small><h2>${title}</h2><p>${c.state.served} guests served · ★${c.metric('rating').toFixed(1)}</p></header>
