@@ -41,6 +41,7 @@ import {
 } from './ratings';
 import { RATING_CATEGORIES, ratingOf, type RatingCategory } from './buildings';
 import { conditionOf } from './world';
+import { COVERS, GREET, caretaker, candidates, hubTask, postTask, type Candidate, type Role, type Worker } from './staff';
 import {
   GATHER_LEAD,
   SIGNUP_LEAD,
@@ -412,8 +413,25 @@ export interface Venue {
   lostToday: number;
 }
 
+/** One month of books for the Finances view (Pass 5). */
+export interface MonthBooks {
+  month: number;
+  rooms: number;
+  venues: number;
+  activities: number;
+  upkeep: number;
+  wages: number;
+  supplies: number;
+  other: number;
+}
+
 export interface SimSnapshot {
-  version: 8;
+  version: 9;
+  /** Staff, the candidates on offer, and the books (Pass 5). */
+  staff: Worker[];
+  candidates: Partial<Record<Role, Candidate[]>>;
+  nextWorkerId: number;
+  books: MonthBooks[];
   /** The day plan, prices per hub, and today's sessions (Pass 4 step 3). */
   plan: PlanEntry[];
   activityPrices: Record<number, PriceStep>;
@@ -505,6 +523,13 @@ export class Sim {
   trips: Trip[] = [];
   /** Per slot today: 1 = sign-ups done, 2 = departed. */
   slotsDone: Record<Slot, number> = { morning: 0, afternoon: 0, evening: 0 };
+  /** The people who work here (Pass 5); every resort starts with a handyman. */
+  staff: Worker[] = [caretaker()];
+  /** Who "Hire new" is offering, per role. */
+  candidates: Partial<Record<Role, Candidate[]>> = {};
+  private nextWorkerId = 2;
+  /** The last 24 months of books. */
+  books: MonthBooks[] = [];
   /** Decoration appeal per tile. */
   readonly appeal: AppealMap;
   /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
@@ -795,7 +820,10 @@ export class Sim {
       }
       // Each night in the room: how well it suits them, minus wear and tear.
       // A bed and a roof count for something even when the room isn't quite their style.
-      addScore(this.scores(g), 'lodging', 25 + g.roomScore * 0.75 - wearPenalty(conditionOf(room)));
+      // Short of maintenance staff, rooms aren't cleaned properly.
+      const dirty = (1 - this.maintenanceCoverage) * 20;
+      if (dirty > 8) this.remember(g, room.id, -6, 'the room wasn’t very clean');
+      addScore(this.scores(g), 'lodging', 25 + g.roomScore * 0.75 - wearPenalty(conditionOf(room)) - dirty);
       const rate = this.roomRate(room);
       const paid = Math.min(rate, g.budget);
       if (rate > g.budget) {
@@ -824,6 +852,11 @@ export class Sim {
       t.upkeep += up;
     }
     if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
+    const wages = this.staff.reduce((s, w) => s + w.wage, 0);
+    if (wages) {
+      this.world.earn(-wages);
+      costs.push({ buildingId: null, name: 'Wages', amount: -wages, detail: `${this.staff.length} staff` });
+    }
     const maint = Math.round(t.upkeep * MAINTENANCE_COST[this.maintenance]);
     if (maint) {
       this.world.earn(-maint);
@@ -877,7 +910,7 @@ export class Sim {
       day: this.day,
       income,
       costs,
-      profit: t.roomIncome + t.spending - t.supplies - t.upkeep - investorCut,
+      profit: t.roomIncome + t.spending - t.supplies - t.upkeep - investorCut - wages,
       stats: { ...t },
       checkingOut,
       reviews,
@@ -891,6 +924,18 @@ export class Sim {
       researchPoints: t.research,
       offer: null,
     };
+    const activityTake = this.trips.reduce((s2, tr) => s2 + tr.revenue, 0);
+    this.books.push({
+      month: this.day,
+      rooms: t.roomIncome,
+      venues: t.spending - activityTake,
+      activities: activityTake,
+      upkeep: t.upkeep,
+      wages,
+      supplies: t.supplies,
+      other: investorCut,
+    });
+    if (this.books.length > 24) this.books.shift();
     // Bankruptcy is never instant: after three red days an investor offers a lifeline.
     this.redDays = report.profit < 0 ? this.redDays + 1 : 0;
     if (this.redDays >= RED_DAYS_FOR_OFFER && !this.investor && !this.offer)
@@ -903,8 +948,17 @@ export class Sim {
   }
 
   /** A month of use: everything wears a little, busy places more, good maintenance less. */
+  /** Share of buildings (decor aside) the maintenance team keeps up with, 0–1. */
+  get maintenanceCoverage(): number {
+    const need = this.world.buildings.filter((b) => BUILDINGS[b.kind].family !== 'decor').length;
+    if (!need) return 1;
+    const covers = this.staff.filter((w) => w.role === 'maintenance').reduce((s2, w) => s2 + (COVERS[w.skill] ?? 6), 0);
+    return Math.min(1, covers / need);
+  }
+
   private wearBuildings(): void {
-    const k = MAINTENANCE_WEAR[this.maintenance];
+    // Short-handed, the team falls behind: things wear up to 2.5 times as fast.
+    const k = MAINTENANCE_WEAR[this.maintenance] * (1 + (1 - this.maintenanceCoverage) * 1.5);
     for (const b of this.world.buildings) {
       const def = BUILDINGS[b.kind];
       let use = 0;
@@ -1024,6 +1078,69 @@ export class Sim {
     return Math.max(0, q - wearPenalty(conditionOf(b)));
   }
 
+  // ---------- staff (Pass 5) ----------
+
+  /** The operations person guiding a hub's session in a slot, if any. */
+  guideFor(hubId: number, slot: Slot): Worker | undefined {
+    const task = hubTask(hubId);
+    return this.staff.find((w) => w.role === 'operations' && w.shifts?.[slot] === task);
+  }
+
+  /** The greeting team: whoever has the morning greeting shift. */
+  get greeter(): Worker | undefined {
+    return this.staff.find((w) => w.role === 'operations' && w.shifts?.morning === GREET);
+  }
+
+  /** The lifeguard at a pool or beach post, if any. */
+  guardAt(buildingId: number): Worker | undefined {
+    const task = postTask(buildingId);
+    return this.staff.find((w) => w.role === 'security' && w.post === task);
+  }
+
+  /** Three people to choose from; a new set each time you ask. */
+  offerStaff(role: Role): Candidate[] {
+    this.candidates[role] = candidates(role, this.rng);
+    return this.candidates[role]!;
+  }
+
+  hire(role: Role, index: number): { ok: true; worker: Worker } | { ok: false; reason: string } {
+    const c = this.candidates[role]?.[index];
+    if (!c) return { ok: false, reason: 'Ask for candidates first' };
+    const w: Worker = { ...c, id: this.nextWorkerId++, hired: this.day, ...(role === 'operations' ? { shifts: {} } : role === 'security' ? { post: null } : {}) };
+    this.staff.push(w);
+    this.candidates[role] = this.candidates[role]!.filter((_, i) => i !== index);
+    return { ok: true, worker: w };
+  }
+
+  fire(id: number): void {
+    this.staff = this.staff.filter((w) => w.id !== id);
+  }
+
+  /**
+   * Give an operations worker a task for a shift (or null to free it). One person per task per
+   * shift, and one task per person per shift: whoever had it before is moved off.
+   */
+  assignShift(workerId: number, slot: Slot, task: string | null): { ok: true } | { ok: false; reason: string } {
+    const w = this.staff.find((x) => x.id === workerId);
+    if (!w || w.role !== 'operations') return { ok: false, reason: 'Only operations staff work shifts' };
+    if (task === GREET && slot !== 'morning') return { ok: false, reason: 'Greeting happens in the morning' };
+    if (task) for (const o of this.staff) if (o !== w && o.shifts?.[slot] === task) delete o.shifts[slot];
+    w.shifts ??= {};
+    if (task) w.shifts[slot] = task;
+    else delete w.shifts[slot];
+    return { ok: true };
+  }
+
+  /** Post a security worker at a pool or beach (or null to stand them down). */
+  assignPost(workerId: number, buildingId: number | null): { ok: true } | { ok: false; reason: string } {
+    const w = this.staff.find((x) => x.id === workerId);
+    if (!w || w.role !== 'security') return { ok: false, reason: 'Only security staff keep watch' };
+    const task = buildingId === null ? null : postTask(buildingId);
+    if (task) for (const o of this.staff) if (o !== w && o.post === task) o.post = null;
+    w.post = task;
+    return { ok: true };
+  }
+
   /** Sign-ups two hours before each slot, departures at the start. */
   private stepActivities(): void {
     for (const slot of SLOTS) {
@@ -1045,6 +1162,7 @@ export class Sim {
       const b = this.building(e.hubId);
       const def = b && activityOf(b.kind);
       if (!b || !def) continue;
+      if (!this.guideFor(b.id, slot)) continue; // no guide: nobody can sign up
       const price = activityPrice(def, this.activityPrice(b.id));
       const quality = this.sessionQuality(b.id);
       let people = 0;
@@ -1077,7 +1195,8 @@ export class Sim {
         addScore(this.scores(g), 'activities', 35);
         this.remember(g, b.id, -4, `we missed the ${def.name.toLowerCase()}`);
       }
-      const quality = this.sessionQuality(b.id);
+      const guide = this.guideFor(b.id, slot);
+      const quality = this.sessionQuality(b.id) + (guide ? (guide.skill - 2) * 6 : 0);
       const minutes = tripMinutes(def, this.world.routeOf(b.id));
       const price = activityPrice(def, this.activityPrice(b.id));
       let revenue = 0;
@@ -1515,7 +1634,13 @@ export class Sim {
     }
     g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + mood));
     const cat = ratingOf(b.kind) === 'activities' ? 'activities' : 'amenities';
-    addScore(this.scores(g), cat, 64 + mood * 6 - wearPenalty(conditionOf(b)));
+    // Pools need a lifeguard: without one, parents (and everyone else) relax less.
+    let unsafe = 0;
+    if (b.kind === 'pool' && !this.guardAt(b.id)) {
+      unsafe = 18;
+      this.remember(g, b.id, -5, 'there was no lifeguard at the pool');
+    }
+    addScore(this.scores(g), cat, 64 + mood * 6 - wearPenalty(conditionOf(b)) - unsafe);
     this.lookAround(g);
     g.state = 'inside';
     g.insideId = b.id;
@@ -1863,7 +1988,11 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 8,
+      version: 9,
+      staff: structuredClone(this.staff),
+      candidates: structuredClone(this.candidates),
+      nextWorkerId: this.nextWorkerId,
+      books: structuredClone(this.books),
       plan: this.dayPlan.map((p) => ({ ...p })),
       activityPrices: { ...this.activityPrices },
       trips: structuredClone(this.trips),
@@ -1890,7 +2019,11 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 8) throw new Error('Incompatible save');
+    if (s.version !== 9) throw new Error('Incompatible save');
+    this.staff = structuredClone(s.staff);
+    this.candidates = structuredClone(s.candidates);
+    this.nextWorkerId = s.nextWorkerId;
+    this.books = structuredClone(s.books);
     this.maintenance = s.maintenance;
     this.dayPlan = s.plan.map((p) => ({ ...p }));
     this.activityPrices = { ...s.activityPrices };
@@ -1921,7 +2054,11 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 8,
+      version: 9,
+      staff: [caretaker()],
+      candidates: {},
+      nextWorkerId: 2,
+      books: [],
       plan: [],
       activityPrices: {},
       trips: [],

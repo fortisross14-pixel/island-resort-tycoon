@@ -4,6 +4,7 @@ import { NODES } from './research';
 import { Sim, type NightReport } from './sim';
 import { World, type Tile } from './world';
 import { islandLayout } from './islands';
+import type { Role, Worker } from './staff';
 import { applyPrebuilt, scenarioDef } from './scenario';
 
 /**
@@ -116,6 +117,13 @@ export class Bot {
     // 3. Front Desk and a Research Office once.
     for (const k of ['frontDesk', 'researchOffice'] as BuildingKind[])
       if (!this.w.buildings.some((b) => b.kind === k)) this.place(k);
+    // 3b. Staff (Pass 5): enough maintenance for the buildings, a lifeguard for each pool.
+    if (sim.maintenanceCoverage < 1 && this.w.money > this.reserve * 3) this.hireBest('maintenance');
+    for (const pool of this.w.buildings.filter((b) => b.kind === 'pool'))
+      if (!sim.guardAt(pool.id) && this.w.money > this.reserve * 3) {
+        const g = this.hireBest('security');
+        if (g) sim.assignPost(g.id, pool.id);
+      }
     // 4. Decor: fill gaps beside buildings along the paths, a couple of items a month.
     const decorCount = this.w.buildings.filter((b) => BUILDINGS[b.kind].family === 'decor').length;
     const others = this.w.buildings.length - decorCount;
@@ -180,6 +188,14 @@ export class Bot {
       for (let x = 0; x < this.w.size; x++)
         if (this.w.isFree(x, y) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => this.w.isPath(x + dx, y + dy))) n++;
     return n;
+  }
+
+  /** Hire the middle candidate (skill 2) of a fresh set. */
+  private hireBest(role: Role): Worker | null {
+    const offer = this.sim.offerStaff(role);
+    const i = Math.max(0, offer.findIndex((c) => c.skill === 2));
+    const r = this.sim.hire(role, i);
+    return r.ok ? r.worker : null;
   }
 
   /** A Hawaiian-themed mix, on a free tile next to both a path and a building. */

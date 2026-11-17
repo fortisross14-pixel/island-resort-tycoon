@@ -24,9 +24,18 @@ const SIM_STEPS: Record<number, (s: AnySim) => AnySim> = {
   6: (s) => ({ ...s, version: 7, maintenance: 'normal' }),
   // Pass 4 step 3 added the day plan and activity sessions.
   7: (s) => ({ ...s, version: 8, plan: [], activityPrices: {}, trips: [], slotsDone: { morning: 0, afternoon: 0, evening: 0 } }),
+  // Pass 5 added staff. Existing resorts get the handyman and one guide on every planned session,
+  // so what ran before still runs.
+  8: (s) => {
+    const plan = (s.plan as Array<{ hubId: number; slot: string }>) ?? [];
+    const staff: Array<Record<string, unknown>> = [{ id: 1, name: 'Old Joe', role: 'maintenance', skill: 1, wage: 0, hired: 1 }];
+    let id = 2;
+    for (const p of plan) staff.push({ id: id++, name: 'Guide', role: 'operations', skill: 2, wage: 135, hired: 1, shifts: { [p.slot]: `hub:${p.hubId}` } });
+    return { ...s, version: 9, staff, candidates: {}, nextWorkerId: id, books: [] };
+  },
 };
 
-export const SIM_VERSION = 8;
+export const SIM_VERSION = 9;
 
 export function migrateSim(s: AnySim): SimSnapshot {
   let cur = s;

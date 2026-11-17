@@ -56,6 +56,15 @@ function resort(): { w: World; hut: number; pier: number } {
   return { w, hut, pier };
 }
 
+/** Hire a guide and put them on a hub's session (Pass 5: no guide, no session). */
+function guide(sim: Sim, hubId: number, slot: 'morning' | 'afternoon' | 'evening'): void {
+  const offer = sim.offerStaff('operations');
+  const best = offer.indexOf(offer.reduce((a, b) => (b.skill > a.skill ? b : a)));
+  const r = sim.hire('operations', best);
+  if (!r.ok) throw new Error(r.reason);
+  sim.assignShift(r.worker.id, slot, `hub:${hubId}`);
+}
+
 function runDays(sim: Sim, days: number): void {
   const ticks = Math.round((16.1 * SECONDS_PER_GAME_HOUR) / TICK);
   for (let d = 0; d < days; d++) for (let i = 0; i < ticks; i++) sim.step();
@@ -127,6 +136,8 @@ describe('the day plan', () => {
     for (const slot of ['morning', 'afternoon'] as const) {
       sim.setPlanned(hut, slot, true);
       sim.setPlanned(pier, slot, true);
+      guide(sim, hut, slot);
+      guide(sim, pier, slot);
     }
     const lines: Array<{ name: string; amount: number }> = [];
     sim.on((e) => {
@@ -151,6 +162,8 @@ describe('the day plan', () => {
         for (const slot of ['morning', 'afternoon', 'evening'] as const) {
           sim.setPlanned(hut, slot, true);
           sim.setPlanned(pier, slot, true);
+          guide(sim, hut, slot);
+          guide(sim, pier, slot);
         }
       }
       runDays(sim, 8);
@@ -171,5 +184,28 @@ describe('the day plan', () => {
     expect(back.routeOf(hut)?.tiles.length).toBe(w.routeOf(hut)!.tiles.length);
     expect(sim2.isPlanned(hut, 'evening')).toBe(true);
     expect(sim2.activityPrice(hut)).toBe(4);
+  });
+
+  it('a session without a guide does not run; a guide in two places is moved, not doubled', () => {
+    const { w, hut, pier } = resort();
+    w.setRoute(hut, routeTo(w, hut, w.landmarks.find((l) => l.kind === 'viewpoint')!)!);
+    w.setRoute(pier, routeTo(w, pier, w.landmarks.find((l) => l.kind === 'turtles')!)!);
+    const sim = new Sim(w);
+    sim.autoCheckIn = true;
+    sim.setPlanned(hut, 'afternoon', true);
+    sim.setPlanned(pier, 'afternoon', true);
+    sim.offerStaff('operations');
+    const g = (sim.hire('operations', 0) as { ok: true; worker: { id: number } }).worker;
+    sim.assignShift(g.id, 'afternoon', `hub:${hut}`);
+    // The same person can't also take the boat out at the same time: it moves them.
+    sim.assignShift(g.id, 'afternoon', `hub:${pier}`);
+    expect(sim.guideFor(hut, 'afternoon')).toBeUndefined();
+    expect(sim.guideFor(pier, 'afternoon')?.id).toBe(g.id);
+    // But they can guide the hike in the morning and the boat in the afternoon.
+    sim.assignShift(g.id, 'morning', `hub:${hut}`);
+    expect(sim.guideFor(hut, 'morning')?.id).toBe(g.id);
+    runDays(sim, 3);
+    const hutAfternoon = sim.trips.filter((t) => t.hubId === hut && t.slot === 'afternoon');
+    expect(hutAfternoon.every((t) => t.people === 0)).toBe(true);
   });
 });

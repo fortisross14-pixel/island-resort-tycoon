@@ -3,11 +3,12 @@ import v5 from './fixtures/save-v5.json?raw';
 import v6 from './fixtures/save-v6.json?raw';
 import v7 from './fixtures/save-v7.json?raw';
 import v8 from './fixtures/save-v8.json?raw';
+import v9 from './fixtures/save-v9.json?raw';
 import { parseSave, migrateSim, SIM_VERSION } from '../src/sim/save';
 import { World } from '../src/sim/world';
 import { Sim } from '../src/sim/sim';
 
-const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6, 'save-v7.json': v7, 'save-v8.json': v8 };
+const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6, 'save-v7.json': v7, 'save-v8.json': v8, 'save-v9.json': v9 };
 const fixture = (name: string) => FIXTURES[name];
 
 /** Load a save the way the game does and run it for a while. */
@@ -22,14 +23,24 @@ function play(raw: string): { world: World; sim: Sim } {
 }
 
 describe('saves', () => {
-  it('loads a current (v8) save and keeps playing', () => {
-    const r = parseSave(fixture('save-v8.json'));
+  it('loads a current (v9) save and keeps playing', () => {
+    const r = parseSave(fixture('save-v9.json'));
     expect(r.ok && r.migrated).toBe(false);
-    const { world, sim } = play(fixture('save-v8.json'));
+    const { world, sim } = play(fixture('save-v9.json'));
     expect(world.buildings.length).toBeGreaterThan(0);
+    expect(sim.campaign?.def.id).toBe('islandKitchen');
+    expect(sim.staff.map((w) => w.role)).toEqual(['maintenance', 'operations']);
+  });
+
+  it('upgrades a v8 save (before staff): the handyman, and a guide for each planned session', () => {
+    const r = parseSave(fixture('save-v8.json'));
+    expect(r.ok && r.migrated).toBe(true);
+    const { sim } = play(fixture('save-v8.json'));
     // Its mission (Driftwood Beginnings) was retired: the resort carries on in free play.
     expect(sim.campaign).toBeNull();
-    expect(sim.dayPlan).toHaveLength(1);
+    expect(sim.staff[0].name).toBe('Old Joe');
+    const hub = sim.dayPlan[0].hubId;
+    expect(sim.guideFor(hub, sim.dayPlan[0].slot)).toBeDefined();
   });
 
   it('upgrades a v7 save (before activities) with an empty day plan', () => {
@@ -61,7 +72,7 @@ describe('saves', () => {
   });
 
   it('keeps the world when the sim is from an unknown version', () => {
-    const data = JSON.parse(fixture('save-v8.json'));
+    const data = JSON.parse(fixture('save-v9.json'));
     data.sim.version = 2;
     const r = parseSave(JSON.stringify(data));
     expect(r.ok && r.save.sim === undefined && r.migrated).toBe(true);
