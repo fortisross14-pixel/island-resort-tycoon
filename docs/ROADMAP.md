@@ -22,7 +22,7 @@ are deliberately left rough.
 | M5 | Economy, night report and reviews | **Done** |
 | Pass 1 | Depth and scenarios | **Done** |
 | Pass 2 | Balance | **Done** |
-| Pass 3 | Graphics, visuals and GUI | **First cut done** (Lagoon Glass) |
+| Pass 3 | Graphics, visuals and GUI | **Done** (Lagoon Glass) |
 
 ---
 
@@ -153,12 +153,12 @@ A headless playtest harness (`npm run playtest`) plays many days with a fixed st
 bot, and logs the economy, payback per building and review complaints. The game was tuned against the GDD
 targets and the targets became tests (`tests/balance.test.ts`). Details and results: [BALANCE.md](BALANCE.md).
 
-## Pass 3 — Graphics, visuals and GUI
+## Pass 3 — Graphics, visuals and GUI ✅
 
 Audited against the game-dev skills in `.claude/skills/` ([AUDIT.md](AUDIT.md)); the chosen
 direction is **Lagoon Glass**.
 
-Done in the first cut:
+First cut:
 
 - New HUD: glass chips (coins, rating, clock with a speed chip, menu), a five-icon dock (Build,
   Guests, play/pause, Research, Goals) and one sheet above it. Build cards are grouped into
@@ -170,11 +170,28 @@ Done in the first cut:
 - Sound: synthesized effects for coins, building, the ferry horn, check-in, errors and fanfares,
   with a mute in the menu.
 - Reduce motion: follows the OS setting, can be toggled in the menu.
-- Performance: buildings are merged per material and paths are one mesh (599 → 327 draw calls
-  for 17 buildings); only changed buildings are rebuilt; pixel ratio 1.5 on touch screens;
-  `PCFShadowMap`; research and lock updates only when something changed.
+- Performance: buildings are merged per material and paths are one mesh; only changed buildings
+  are rebuilt; pixel ratio 1.5 on touch screens; `PCFShadowMap`; research and lock updates only
+  when something changed.
 - A one-time notice when the game can't save.
 
-Still to do: day and night lighting, onboarding (a guided first day), a screen stack for
-overlays, save migrations, merging all buildings into a single static layer, PWA install and
-numbers from a real mid-range phone.
+Second cut:
+
+- Day and night: the light follows the clock (warm morning, golden evening, blue night), the sun
+  swings across the sky, windows glow after dark and the HUD gets a night wash.
+- Guided first day: six steps (path, room, food, play, check-in, night report), each ticked off
+  by doing it, with the dock button to press pulsing. On by default for a first scenario, a
+  checkbox on the New island screen, and Skip.
+- One static layer: settled buildings are baked into one mesh per material (599 → 158 draw calls
+  for 17 buildings); a building only leaves it while it pops in.
+- Saves: a migration chain (sim v5 → v6 so far) with fixture tests, and a copy kept from the start
+  of each day that loads if the autosave is damaged.
+- Installable app: web manifest, icons and a service worker, so the game installs to the home
+  screen and plays offline.
+- Esc closes the topmost layer only (dialogs, popovers, panels, the selected guest, the tool, the
+  sheet).
+- Research is drawn as a tree: one column per tier, colour-coded by branch, with the gate (two topics of
+  the tier before) between tiers.
+
+Left for later: a string table for translations, GDD neighbour appeal for fun venues (a design
+change, not a visual one) and numbers from a real mid-range phone.

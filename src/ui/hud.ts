@@ -1,7 +1,7 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
 import { nodeFor } from '../sim/research';
 import { WISHES, type Wish } from '../sim/match';
-import { BRANCHES, type NodeStatus, type ResearchNode } from '../sim/research';
+import { BRANCHES, GATE_COUNT, type NodeStatus, type ResearchNode } from '../sim/research';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
 export type TrayItem = BuildingKind | 'path' | 'land';
@@ -501,6 +501,19 @@ export class Hud {
     p.hidden = false;
   }
 
+  /** Close the menu or the card info, whichever is open (Esc). */
+  closePopover(): boolean {
+    if (!this.menuPop.hidden) {
+      this.toggleMenu(false);
+      return true;
+    }
+    if (!this.infoPop.hidden) {
+      this.hideInfo();
+      return true;
+    }
+    return false;
+  }
+
   private hideInfo(): void {
     this.infoPop.hidden = true;
     this.infoFor = null;
@@ -593,21 +606,31 @@ export class Hud {
     if (key === this.researchKey) return;
     this.researchKey = key;
     this.root.querySelector('[data-points]')!.textContent = String(points);
-    const html = nodes
-      .slice()
-      .sort((a, b) => a.node.tier - b.node.tier || a.node.branch.localeCompare(b.node.branch))
-      .map(({ node, status }) => {
-        const foot =
-          status.state === 'done'
-            ? `<span class="state done">${UI.check}Done</span>`
-            : status.state === 'available'
-              ? `<span class="state go">${node.cost} pts</span>`
-              : `<span class="state">${status.reason}</span>`;
-        return `<button class="card topic ${status.state}" data-node="${node.id}" title="${node.blurb}">
-          <span class="branch">${BRANCHES[node.branch]} · T${node.tier}</span>
-          <span class="name">${node.name}</span>
-          ${foot}
-        </button>`;
+    // A tree read left to right: one column per tier, joined by the gate that opens the next.
+    const tiers = [...new Set(nodes.map((n) => n.node.tier))].sort((a, b) => a - b);
+    const html = tiers
+      .map((tier, i) => {
+        const inTier = nodes.filter((n) => n.node.tier === tier).sort((a, b) => a.node.branch.localeCompare(b.node.branch));
+        const done = inTier.filter((n) => n.status.state === 'done').length;
+        const open = tier === 1 || nodes.filter((n) => n.node.tier === tier - 1 && n.status.state === 'done').length >= GATE_COUNT;
+        const topics = inTier
+          .map(({ node, status }) => {
+            const foot =
+              status.state === 'done'
+                ? `<span class="state done">${UI.check}Done</span>`
+                : status.state === 'available'
+                  ? `<span class="state go">${node.cost} pts</span>`
+                  : `<span class="state">${open ? status.reason.replace(/^Needs /, '') : `${UI.lock}${node.cost} pts`}</span>`;
+            return `<button class="card topic ${status.state} b-${node.branch}" data-node="${node.id}" title="${BRANCHES[node.branch]}: ${node.blurb}">
+              <span class="name">${node.name}</span>${foot}
+            </button>`;
+          })
+          .join('');
+        const gate =
+          i < tiers.length - 1
+            ? `<div class="gate ${done >= GATE_COUNT ? 'open' : ''}" title="${GATE_COUNT} tier ${tier} topics open tier ${tier + 1}"><span>${Math.min(done, GATE_COUNT)}/${GATE_COUNT}</span><i></i></div>`
+            : '';
+        return `<div class="tier-col ${open ? '' : 'closed'}"><h5>Tier ${tier}</h5><div class="tier-topics">${topics}</div></div>${gate}`;
       })
       .join('');
     this.root.querySelector('[data-research-cards]')!.innerHTML = html;

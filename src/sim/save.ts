@@ -1,0 +1,71 @@
+import type { SimSnapshot } from './sim';
+import { World, type WorldSnapshot } from './world';
+
+/** What goes into storage: the world and (from M2) the simulation beside it. */
+export interface SaveFile {
+  world: WorldSnapshot;
+  sim?: SimSnapshot;
+}
+
+export type LoadResult =
+  | { ok: true; save: SaveFile; migrated: boolean }
+  | { ok: false; reason: 'empty' | 'corrupt' | 'too-old' };
+
+type AnySim = { version: number } & Record<string, unknown>;
+
+/**
+ * Sim snapshot upgrades, one step per version. Each takes version N and returns N+1.
+ * Add a step here whenever SimSnapshot changes shape, and a fixture in tests/fixtures.
+ */
+const SIM_STEPS: Record<number, (s: AnySim) => AnySim> = {
+  // Pass 1 step 4 added scenarios and the investor rescue.
+  5: (s) => ({ ...s, version: 6, campaign: null, redDays: 0, investor: null, offer: null }),
+};
+
+export const SIM_VERSION = 6;
+
+export function migrateSim(s: AnySim): SimSnapshot {
+  let cur = s;
+  while (cur.version < SIM_VERSION) {
+    const step = SIM_STEPS[cur.version];
+    if (!step) throw new Error(`No upgrade from sim v${cur.version}`);
+    cur = step(cur);
+  }
+  if (cur.version !== SIM_VERSION) throw new Error(`Save is from a newer version (sim v${cur.version})`);
+  return cur as unknown as SimSnapshot;
+}
+
+/**
+ * Parse and upgrade a stored save. World snapshots from before the plotted map (M1–M5) can't be
+ * mapped onto the new island and report 'too-old'; a sim that can't be upgraded is dropped and the
+ * world kept, so the player at least keeps their buildings.
+ */
+export function parseSave(raw: string | null): LoadResult {
+  if (!raw) return { ok: false, reason: 'empty' };
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: 'corrupt' };
+  }
+  if (!data || typeof data !== 'object') return { ok: false, reason: 'corrupt' };
+  // M1 saves held just the world snapshot.
+  const file = ('world' in data ? data : { world: data }) as { world: WorldSnapshot; sim?: AnySim };
+  try {
+    World.fromSnapshot(file.world); // throws if the world doesn't fit this version
+  } catch {
+    return { ok: false, reason: 'too-old' };
+  }
+  let migrated = false;
+  let sim: SimSnapshot | undefined;
+  if (file.sim) {
+    try {
+      migrated = file.sim.version !== SIM_VERSION;
+      sim = migrateSim(file.sim);
+    } catch {
+      sim = undefined;
+      migrated = true;
+    }
+  }
+  return { ok: true, save: { world: file.world, sim }, migrated };
+}

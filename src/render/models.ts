@@ -649,6 +649,37 @@ export function mergeByMaterial(model: THREE.Object3D): THREE.Group {
 }
 
 /**
+ * Bake already-merged models (from mergeByMaterial) into one group with a mesh per material.
+ * The models keep their own geometry, so one can be re-baked or animated on its own.
+ */
+export function mergeLayer(models: THREE.Object3D[]): THREE.Group | null {
+  if (!models.length) return null;
+  const buckets = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; geos: THREE.BufferGeometry[] }>();
+  for (const model of models) {
+    model.updateMatrixWorld(true);
+    for (const o of model.children) {
+      if (!(o instanceof THREE.Mesh) || Array.isArray(o.material)) continue;
+      const geo = (o.geometry as THREE.BufferGeometry).clone().applyMatrix4(o.matrixWorld);
+      const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, (b = { mat: o.material, cast: o.castShadow, receive: o.receiveShadow, geos: [] }));
+      b.geos.push(geo);
+    }
+  }
+  const out = new THREE.Group();
+  for (const b of buckets.values()) {
+    const merged = mergeGeometries(b.geos, false);
+    for (const g of b.geos) g.dispose();
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, b.mat);
+    mesh.castShadow = b.cast;
+    mesh.receiveShadow = b.receive;
+    out.add(mesh);
+  }
+  return out;
+}
+
+/**
  * Every footpath tile as one mesh: a centre pad per tile plus a strip towards each linked
  * neighbour, so junctions read as one walkway. Pieces abut exactly so coplanar tops can't z-fight.
  */
@@ -680,4 +711,10 @@ export function pathMesh(tiles: Array<{ x: number; y: number; n: boolean; s: boo
   const mesh = new THREE.Mesh(geo, mat(PALETTE.path));
   mesh.receiveShadow = true;
   return mesh;
+}
+
+/** Light the windows from 0 (day) to 1 (night). Window materials are shared, so this is cheap. */
+export function setWindowGlow(k: number): void {
+  const glow = new THREE.Color('#ffc66b').multiplyScalar(0.9 * k);
+  for (const c of [PALETTE.window, '#f6d98b']) mat(c).emissive.copy(glow);
 }

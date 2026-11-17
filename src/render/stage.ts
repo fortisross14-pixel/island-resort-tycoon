@@ -16,6 +16,11 @@ export class Stage {
   private readonly raycaster = new THREE.Raycaster();
   private needsRender = true;
   private sun!: THREE.DirectionalLight;
+  private hemi!: THREE.HemisphereLight;
+  private sunCentre = new THREE.Vector3(5, 0, 5);
+  private lightKey = -1;
+  /** 0 by day, 1 at full night: windows glow and the HUD tint deepens. */
+  night = 0;
   private frameHooks: Array<(dt: number) => boolean> = [];
   private lastFrame = 0;
   /** World units visible vertically at zoom 1. */
@@ -41,6 +46,7 @@ export class Stage {
 
     const hemi = new THREE.HemisphereLight('#fff6e0', '#4a8a9a', 1.6);
     this.scene.add(hemi);
+    this.hemi = hemi;
     const sun = new THREE.DirectionalLight('#fff1d6', 2.2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -82,9 +88,40 @@ export class Stage {
     cam.left = cam.bottom = -half;
     cam.right = cam.top = half;
     cam.updateProjectionMatrix();
+    this.sunCentre.set(cx, 0, cz);
     this.sun.target.position.set(cx, 0, cz);
-    this.sun.position.set(cx - 8, 20, cz + 12);
+    this.placeSun(0);
     this.requestRender();
+  }
+
+  /**
+   * Light for a time of day (game minutes): warm dawn, bright noon, golden evening, blue night.
+   * Only recomputed every 5 game minutes.
+   */
+  setTimeOfDay(minutes: number): void {
+    const key = Math.floor(minutes / 5);
+    if (key === this.lightKey) return;
+    this.lightKey = key;
+    const h = minutes / 60;
+    const a = lerpKeys(LIGHT_KEYS, h);
+    this.sun.color.set(a.sun);
+    this.sun.intensity = a.sunI;
+    this.hemi.color.set(a.sky);
+    this.hemi.groundColor.set(a.ground);
+    this.hemi.intensity = a.hemiI;
+    (this.scene.background as THREE.Color).set(a.bg);
+    this.night = a.night;
+    // The sun swings from east to west across the day.
+    this.placeSun(THREE.MathUtils.clamp((h - 15) / 8, -1, 1));
+    this.requestRender();
+  }
+
+  private placeSun(swing: number): void {
+    const c = this.sunCentre;
+    const ang = swing * 0.9;
+    const dx = -8 * Math.cos(ang) - 12 * Math.sin(ang);
+    const dz = 12 * Math.cos(ang) - 8 * Math.sin(ang);
+    this.sun.position.set(c.x + dx, 20 - Math.abs(swing) * 6, c.z + dz);
   }
 
   /** Make the default zoom fit an island `tiles` across. */
@@ -158,4 +195,50 @@ export class Stage {
     if (before && after) this.lookAt(this.target.x + (before.x - after.x), this.target.z + (before.z - after.z));
     this.requestRender();
   }
+}
+
+interface LightKey {
+  h: number;
+  sun: string;
+  sunI: number;
+  sky: string;
+  ground: string;
+  hemiI: number;
+  bg: string;
+  night: number;
+}
+
+/** Keyframes by hour. Noon matches the original fixed lighting. */
+const LIGHT_KEYS: LightKey[] = [
+  { h: 7, sun: '#ffd0a8', sunI: 1.8, sky: '#ffe8d6', ground: '#4a7f96', hemiI: 1.45, bg: '#86cbdc', night: 0 },
+  { h: 9, sun: '#ffeacc', sunI: 2.1, sky: '#fff3de', ground: '#4a8a9a', hemiI: 1.55, bg: '#7fd3e0', night: 0 },
+  { h: 11, sun: '#fff1d6', sunI: 2.2, sky: '#fff6e0', ground: '#4a8a9a', hemiI: 1.6, bg: '#7fd3e0', night: 0 },
+  { h: 16, sun: '#fff1d6', sunI: 2.2, sky: '#fff6e0', ground: '#4a8a9a', hemiI: 1.6, bg: '#7fd3e0', night: 0 },
+  { h: 18.5, sun: '#ffc27a', sunI: 1.9, sky: '#ffe0b8', ground: '#5a7f96', hemiI: 1.4, bg: '#8cc9d6', night: 0.1 },
+  { h: 20, sun: '#ff8a6a', sunI: 1.1, sky: '#d8b4d8', ground: '#3d5a80', hemiI: 1.1, bg: '#6a8fb8', night: 0.5 },
+  { h: 21.5, sun: '#8fa8ff', sunI: 0.55, sky: '#8a9ad8', ground: '#253a66', hemiI: 0.85, bg: '#3a5684', night: 0.9 },
+  { h: 24, sun: '#8fa8ff', sunI: 0.5, sky: '#8090d0', ground: '#22355e', hemiI: 0.8, bg: '#334c7a', night: 1 },
+];
+
+function lerpKeys(keys: LightKey[], h: number): LightKey {
+  if (h <= keys[0].h) return keys[0];
+  const last = keys[keys.length - 1];
+  if (h >= last.h) return last;
+  let i = 0;
+  while (keys[i + 1].h < h) i++;
+  const a = keys[i];
+  const b = keys[i + 1];
+  const t = (h - a.h) / (b.h - a.h);
+  const col = (x: string, y: string) => '#' + new THREE.Color(x).lerp(new THREE.Color(y), t).getHexString();
+  const num = (x: number, y: number) => x + (y - x) * t;
+  return {
+    h,
+    sun: col(a.sun, b.sun),
+    sunI: num(a.sunI, b.sunI),
+    sky: col(a.sky, b.sky),
+    ground: col(a.ground, b.ground),
+    hemiI: num(a.hemiI, b.hemiI),
+    bg: col(a.bg, b.bg),
+    night: num(a.night, b.night),
+  };
 }

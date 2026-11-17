@@ -1,7 +1,8 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, footprint, type BuildingKind, type Rotation } from './sim/buildings';
 import { History } from './sim/history';
-import { World, manhattanSteps, type Tile, type WorldSnapshot } from './sim/world';
-import { Sim, TICK, type SimEvent, type SimSnapshot } from './sim/sim';
+import { World, manhattanSteps, type Tile } from './sim/world';
+import { Sim, TICK, type SimEvent } from './sim/sim';
+import { parseSave, type SaveFile } from './sim/save';
 import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
 import { InfoPanel } from './ui/panel';
@@ -10,8 +11,10 @@ import { GoalsView, NewGameDialog, certificateHtml, type NewGameChoice } from '.
 import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
+import { setWindowGlow } from './render/models';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
 import { Sound } from './ui/sfx';
+import { Coach, type CoachState } from './ui/coach';
 import type { HighlightTone, RoomMark } from './render/worldView';
 
 type Tool =
@@ -22,6 +25,8 @@ type Tool =
   | { type: 'demolish' };
 
 const SAVE_KEY = 'irt.save.v1';
+/** The save as it was at the start of the current day. */
+const BACKUP_KEY = 'irt.save.backup';
 const SETTINGS_KEY = 'irt.settings.v1';
 
 type Settings = { sound: boolean; reduceMotion: boolean };
@@ -38,10 +43,6 @@ function loadSettings(): Settings {
 /** Real seconds between autosaves while the clock runs. */
 const AUTOSAVE_SECONDS = 5;
 
-interface SaveFile {
-  world: WorldSnapshot;
-  sim?: SimSnapshot;
-}
 /** Pointer travel (px) below which a press counts as a tap. */
 const TAP_SLOP = 8;
 
@@ -90,6 +91,9 @@ export class Game {
   private settings = loadSettings();
   private researchKey = '';
   private saveWarned = false;
+  private lightInit = false;
+  private coach!: Coach;
+  private coachBase = { paths: 0, arrived: false, checkedIn: 0, night: false };
   /** The arrival card being placed (dragged, or tapped then a room tapped). */
   private selectedGuest: number | null = null;
   private cardDrag: { id: number; sx: number; sy: number; moved: boolean } | null = null;
@@ -104,7 +108,7 @@ export class Game {
   private saveTimer = 0;
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
-    const { save, discarded } = loadSave();
+    const { save, discarded, note } = loadSave();
     this.world = save ? World.fromSnapshot(save.world) : World.newGame();
     this.sim = new Sim(this.world);
     let simLoaded = false;
@@ -172,6 +176,7 @@ export class Game {
     if (this.sim.night) this.report.show(this.sim.night);
     this.goals = new GoalsView(hudRoot, (open) => this.hud.setGoalsOpen(open));
     this.newGame = new NewGameDialog(hudRoot, (c) => this.startNewGame(c));
+    this.coach = new Coach(hudRoot);
     this.certificate = document.createElement('div');
     this.certificate.className = 'report-backdrop';
     this.certificate.hidden = true;
@@ -180,7 +185,7 @@ export class Game {
       if (t.closest('[data-keep]')) this.certificate.hidden = true;
       if (t.closest('[data-new]')) {
         this.certificate.hidden = true;
-        this.newGame.show(true);
+        this.newGame.show(true, !Coach.seen);
       }
     });
     hudRoot.appendChild(this.certificate);
@@ -198,15 +203,17 @@ export class Game {
     this.refreshResearch(true);
     if (!simLoaded) {
       this.setSpeed(0);
-      this.newGame.show(false);
+      this.newGame.show(false, !Coach.seen);
     }
     if (discarded) this.hud.toast('The island is bigger now: an old prototype save was replaced', 'info');
+    else if (note) this.hud.toast(note, 'info');
   }
 
   // ---------- clock ----------
 
   setSpeed(sp: Speed): void {
     this.speed = sp;
+    this.updateCoach();
     this.hud.setSpeed(sp);
     this.stage.requestRender();
   }
@@ -228,9 +235,13 @@ export class Game {
     const alpha = this.speed > 0 ? this.tickAcc / TICK : 1;
     this.guestView.update(alpha, this.speed > 0 ? dt : 0);
     this.ferryView.update(this.speed > 0 ? dt : 0);
-    const popping = this.coinPops.update(dt * Math.max(this.speed, 1)) || this.view.update(dt);
+    // Both must run every frame (|| would skip the view while coins are popping).
+    const coinsMoving = this.coinPops.update(dt * Math.max(this.speed, 1));
+    const viewMoving = this.view.update(dt);
+    const popping = coinsMoving || viewMoving;
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
+    this.updateLight();
     this.hud.setRating(this.sim.rating);
     this.goals.update(performance.now());
     this.refreshResearch();
@@ -240,7 +251,49 @@ export class Game {
     return this.speed > 0 || popping;
   }
 
+  /** Day and night: scene lights, glowing windows and the HUD's sky tint. */
+  private updateLight(): void {
+    const before = this.stage.night;
+    this.stage.setTimeOfDay(this.sim.night ? 24 * 60 : this.sim.minutes);
+    const n = this.stage.night;
+    if (n === before && this.lightInit) return;
+    this.lightInit = true;
+    setWindowGlow(n);
+    document.documentElement.style.setProperty('--night', n.toFixed(2));
+  }
+
+  private coachState(): CoachState {
+    const b = this.world.buildings;
+    const c = this.coachBase;
+    return {
+      newPaths: this.world.pathTiles().length - c.paths,
+      rooms: b.filter((x) => BUILDINGS[x.kind].family === 'rooms').length,
+      food: b.filter((x) => BUILDINGS[x.kind].family === 'food').length,
+      playing: this.speed > 0,
+      arrived: c.arrived,
+      checkedIn: c.checkedIn,
+      night: c.night,
+    };
+  }
+
+  private updateCoach(): void {
+    if (this.coach.active) this.coach.update(this.coachState());
+  }
+
+  /** Start the guided first day on a fresh island, paused so the player can build first. */
+  private startCoach(): void {
+    this.coachBase = { paths: this.world.pathTiles().length, arrived: false, checkedIn: 0, night: false };
+    this.coach.start();
+    this.setSpeed(0);
+  }
+
   private onSimEvent(e: SimEvent): void {
+    if (this.coach.active) {
+      if (e.type === 'ferryDocked' && e.guests > 0) this.coachBase.arrived = true;
+      if (e.type === 'checkedIn') this.coachBase.checkedIn++;
+      if (e.type === 'night') this.coachBase.night = true;
+      queueMicrotask(() => this.updateCoach());
+    }
     switch (e.type) {
       case 'ferryArriving':
         this.sfx.play('horn');
@@ -276,7 +329,7 @@ export class Game {
         return;
       case 'newDay':
         this.hud.toast(`Day ${e.day}: the ferry arrives at 08:00`, 'info');
-        this.save();
+        this.save(true);
         return;
     }
   }
@@ -490,7 +543,7 @@ export class Game {
   }
 
   private newIsland(): void {
-    this.newGame.show(true);
+    this.newGame.show(true, !Coach.seen);
   }
 
   /** Start a scenario or the sandbox on a fresh island. */
@@ -510,6 +563,8 @@ export class Game {
     this.onWorldChange();
     this.setSpeed(1);
     this.save();
+    if ('scenario' in choice && choice.tutorial) return this.startCoach();
+    this.coach.finish();
     this.hud.toast(scenario ? `${scenario.name}: build rooms and paths before the 08:00 ferry` : 'Sandbox: everything is unlocked', 'info');
   }
 
@@ -556,11 +611,13 @@ export class Game {
     if (this.selectedGuest !== null) this.showRoomMarks();
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.save(), 300);
+    this.updateCoach();
   }
 
-  private save(): void {
+  /** Autosave; `backup` first keeps the previous save as the day's restore point. */
+  private save(backup = false): void {
     this.sinceSave = 0;
-    const ok = writeSave({ world: this.world.snapshot(), sim: this.sim.snapshot() });
+    const ok = writeSave({ world: this.world.snapshot(), sim: this.sim.snapshot() }, backup);
     if (!ok && !this.saveWarned) {
       this.saveWarned = true;
       this.hud.toast("Can't save on this device (storage full or private mode): progress will be lost on reload", 'info');
@@ -754,6 +811,7 @@ export class Game {
         e.preventDefault();
         return this.undo();
       }
+      if (e.key === 'Escape') return this.back();
       if (this.newGame.open || !this.certificate.hidden) return;
       if (e.key === 'Enter' && this.report.open) return this.startDay();
       if (e.key === ' ') {
@@ -761,10 +819,6 @@ export class Game {
         return this.setSpeed(this.speed === 0 ? 1 : 0);
       }
       switch (e.key.toLowerCase()) {
-        case 'escape':
-          if (this.selectedGuest !== null) return this.selectGuest(null);
-          if (this.panel.open) return this.panel.close();
-          return this.setTool({ type: 'none' });
         case 'g':
           return this.setTab(this.tab === 'guests' ? 'none' : 'guests');
         case 'l':
@@ -788,6 +842,22 @@ export class Game {
         }
       }
     });
+  }
+
+  /**
+   * Esc: close the topmost layer only, in stacking order — dialogs, popovers, side panels,
+   * the selected guest, the active tool, then the sheet. The night report stays until Start day.
+   */
+  private back(): void {
+    if (this.newGame.open) return void this.newGame.cancel();
+    if (!this.certificate.hidden) return void (this.certificate.hidden = true);
+    if (this.report.open) return;
+    if (this.hud.closePopover()) return;
+    if (this.goals.isOpen) return this.goals.toggle(false);
+    if (this.panel.open) return this.panel.close();
+    if (this.selectedGuest !== null) return this.selectGuest(null);
+    if (this.tool.type !== 'none') return this.setTool({ type: 'none' });
+    if (this.tab !== 'none') return this.setTab('none');
   }
 
   private onDown(e: PointerEvent, canvas: HTMLCanvasElement): void {
@@ -916,23 +986,29 @@ export class Game {
   }
 }
 
-function loadSave(): { save: SaveFile | null; discarded: boolean } {
+function readKey(key: string): string | null {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return { save: null, discarded: false };
-    const data = JSON.parse(raw) as SaveFile | WorldSnapshot;
-    // M1 saves held just the world snapshot.
-    const save = 'world' in data ? data : { world: data };
-    World.fromSnapshot(save.world); // throws if the save doesn't fit this version
-    return { save, discarded: false };
+    return localStorage.getItem(key);
   } catch {
-    // Saves from before the plotted map (M1–M5) don't fit the new island.
-    return { save: null, discarded: true };
+    return null;
   }
 }
 
-function writeSave(s: SaveFile): boolean {
+/** The autosave, or the copy kept at the start of the day if the autosave can't be read. */
+function loadSave(): { save: SaveFile | null; discarded: boolean; note: string } {
+  const main = parseSave(readKey(SAVE_KEY));
+  if (main.ok) return { save: main.save, discarded: false, note: main.migrated ? 'Your save was upgraded to this version' : '' };
+  const backup = parseSave(readKey(BACKUP_KEY));
+  if (backup.ok) return { save: backup.save, discarded: false, note: 'The last save was damaged: restored this morning’s copy' };
+  return { save: null, discarded: main.reason === 'too-old', note: '' };
+}
+
+function writeSave(s: SaveFile, backup = false): boolean {
   try {
+    if (backup) {
+      const prev = localStorage.getItem(SAVE_KEY);
+      if (prev) localStorage.setItem(BACKUP_KEY, prev);
+    }
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
     return true;
   } catch {

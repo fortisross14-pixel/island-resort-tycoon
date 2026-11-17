@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { footprint, type BuildingKind, type Rotation } from '../sim/buildings';
 import type { Tile, World } from '../sim/world';
-import { PALETTE, buildingModel, mat, mergeByMaterial, palm, pathMesh, stackedModel } from './models';
+import { PALETTE, buildingModel, mat, mergeByMaterial, mergeLayer, palm, pathMesh, stackedModel } from './models';
 import type { Stage } from './stage';
 
 export type HighlightTone = 'ok' | 'warn' | 'bad' | 'info';
@@ -55,6 +55,8 @@ export class WorldView {
   private dust: Array<{ mesh: THREE.Mesh; t: number }> = [];
   private dustGeo = new THREE.RingGeometry(0.55, 0.8, 24).rotateX(-Math.PI / 2);
   private synced = false;
+  /** Every settled building baked into one mesh per material (a handful of draw calls in all). */
+  private staticGroup = new THREE.Group();
   /** Skip the placement pop and dust. */
   reduceMotion = false;
   private ghostMats: Record<'ok' | 'bad', THREE.MeshBasicMaterial> = {
@@ -76,7 +78,7 @@ export class WorldView {
     const s = stage.scene;
     this.buildEnvironment();
     s.add(this.terrainGroup, this.beachGroup, this.palmsGroup, this.forSaleGroup);
-    s.add(this.pathsGroup, this.buildingsGroup, this.highlightGroup, this.marksGroup, this.ghostGroup);
+    s.add(this.pathsGroup, this.staticGroup, this.buildingsGroup, this.highlightGroup, this.marksGroup, this.ghostGroup);
     this.grid.visible = false;
     s.add(this.grid);
     world.onChange(() => this.sync());
@@ -139,6 +141,8 @@ export class WorldView {
       if (t >= 1) {
         obj.scale.set(1, 1, 1);
         this.popping.delete(obj);
+        this.buildingsGroup.remove(obj);
+        if (!this.popping.size) this.rebuildStatic();
       } else this.popping.set(obj, t);
     }
     for (const d of [...this.dust]) {
@@ -159,6 +163,7 @@ export class WorldView {
     if (this.reduceMotion) return;
     obj.scale.set(0.6, 0.3, 0.6);
     this.popping.set(obj, 0);
+    this.buildingsGroup.add(obj);
     const ring = new THREE.Mesh(this.dustGeo, new THREE.MeshBasicMaterial({ color: '#fff3d6', transparent: true, opacity: 0.7, depthWrite: false }));
     ring.userData.size = Math.max(w, h) * 0.75;
     ring.position.set(obj.position.x, 0.05, obj.position.z);
@@ -328,6 +333,7 @@ export class WorldView {
     }
     // Buildings: keep unchanged models, rebuild changed ones, pop the new ones.
     const seen = new Set<number>();
+    let changed = false;
     const fresh: Array<{ obj: THREE.Group; w: number; h: number }> = [];
     for (const b of w.buildings) {
       seen.add(b.id);
@@ -336,15 +342,29 @@ export class WorldView {
       if (have && have.key === key) continue;
       if (have) this.dropModel(b.id);
       const obj = placeModel(mergeByMaterial(stackedModel(b.kind, b.floors ?? 1, !!b.elevator)), b.kind, b.x, b.y, b.rot);
-      this.buildingsGroup.add(obj);
       this.models.set(b.id, { key, obj });
+      changed = true;
       const fp = footprint(b.kind, b.rot);
       if (!have) fresh.push({ obj, w: fp.w, h: fp.h });
     }
-    for (const id of [...this.models.keys()]) if (!seen.has(id)) this.dropModel(id);
+    for (const id of [...this.models.keys()])
+      if (!seen.has(id)) {
+        this.dropModel(id);
+        changed = true;
+      }
     // Pop only what the player just placed (not a load or a new island).
     if (this.synced && fresh.length <= 2) for (const f of fresh) this.placeEffect(f.obj, f.w, f.h);
     this.synced = true;
+    if (changed) this.rebuildStatic();
+    this.stage.requestRender();
+  }
+
+  /** Re-bake the static layer from every building that isn't mid-animation. */
+  private rebuildStatic(): void {
+    clear(this.staticGroup);
+    const objs = [...this.models.values()].map((m) => m.obj).filter((o) => !this.popping.has(o));
+    const layer = mergeLayer(objs);
+    if (layer) this.staticGroup.add(layer);
     this.stage.requestRender();
   }
 

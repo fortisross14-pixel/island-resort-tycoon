@@ -1,0 +1,17 @@
+{
+  "name": "Island Resort Tycoon",
+  "short_name": "Resort Tycoon",
+  "description": "Build a tropical island resort, welcome guests off the ferry and earn your medals.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#3cb3c8",
+  "theme_color": "#3cb3c8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

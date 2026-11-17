@@ -5,7 +5,7 @@ hand, and watch them walk your paths and spend money.
 
 This repository holds the proof of concept. The plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
 **M1–M5 are done:** island and construction, clock and ferry, check-in, needs and spending, and the nightly accounts, reviews and star rating. Pass 1 (depth) is done: a bigger island with land plots, tier-1 and tier-2 buildings, research, six guest types, stacked floors, and scenario 1 with medals, daily goals and an investor rescue; see [docs/CATALOGUE.md](docs/CATALOGUE.md). Then come the balance and graphics/GUI passes.
-Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/
+Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/ (on a phone, "Add to Home Screen" installs it and it then plays offline).
 
 ![M3: dragging a backpacker onto a room shows the match score](docs/m3.png)
 
@@ -33,7 +33,7 @@ npm run build      # type-check and build to dist/
 | Pause / speed | the round button in the dock; the 1×/2×/4× chip next to the clock | `Space` pauses |
 | Check in a guest | **Guests** in the dock: drag a card onto a room, or tap a card then a room | same; `G` toggles the sheet |
 | Building details | the ⓘ on a card, or long-press the card | Tab to a card, `I` |
-| Sound, reduce motion, new island | the ••• menu | |
+| Sound, reduce motion, new island | the ••• menu | `Esc` closes the top layer |
 
 Tap a guest or a building with no tool selected to open its panel. A venue's panel sets its price; a room's panel sets the nightly rate. At 23:00 the night report appears: tap a review to see where it happened, then **Start day** (or Enter).
 
@@ -59,6 +59,9 @@ src/
     coinPops.ts    floating +N coins on purchases
   ui/hud.ts   DOM overlay (Lagoon Glass): top chips, dock, build/guest/research sheet, toasts
   ui/sfx.ts   synthesized sound effects (WebAudio)
+  ui/coach.ts guided first day
+  sim/save.ts save parsing and the version migration chain
+public/      web manifest, icons and the offline service worker
   ui/panel.ts guest and building info panel
   ui/report.ts night report
   game.ts     input handling and tools; glues sim, render and UI

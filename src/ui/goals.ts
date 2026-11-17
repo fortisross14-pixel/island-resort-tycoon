@@ -95,7 +95,7 @@ export class GoalsView {
   }
 }
 
-export type NewGameChoice = { scenario: string } | { sandbox: true };
+export type NewGameChoice = { scenario: string; tutorial: boolean } | { sandbox: true };
 
 /** Choose a scenario or the sandbox. */
 export class NewGameDialog {
@@ -114,7 +114,8 @@ export class NewGameDialog {
       const s = t.closest<HTMLElement>('[data-scenario]');
       if (s) {
         this.hide();
-        return this.onChoose({ scenario: s.dataset.scenario! });
+        const guide = this.el.querySelector<HTMLInputElement>('[data-tutorial]');
+        return this.onChoose({ scenario: s.dataset.scenario!, tutorial: !!guide?.checked });
       }
       if (t.closest('[data-sandbox]')) {
         this.hide();
@@ -124,11 +125,19 @@ export class NewGameDialog {
     });
   }
 
+  /** Close if the dialog offers a way back (not on the very first launch). */
+  cancel(): boolean {
+    if (this.el.hidden || !this.el.querySelector('[data-cancel]')) return false;
+    this.hide();
+    return true;
+  }
+
   get open(): boolean {
     return !this.el.hidden;
   }
 
-  show(canCancel: boolean): void {
+  /** `guide`: tick "Guide me through the first day" by default. */
+  show(canCancel: boolean, guide = false): void {
     const cards = SCENARIOS.map(
       (s) => `<button class="choice" data-scenario="${s.id}">
         <b>${s.name}</b><span>${s.blurb}</span>
@@ -138,6 +147,7 @@ export class NewGameDialog {
     ).join('');
     this.el.innerHTML = `<section class="report newgame" role="dialog" aria-label="New game">
       <header><small>Island Resort Tycoon</small><h2>New island</h2></header>
+      <label class="guide"><input type="checkbox" data-tutorial ${guide ? 'checked' : ''} /> Guide me through the first day</label>
       <div class="choices">${cards}
         <button class="choice" data-sandbox><b>Sandbox</b><span>Every building unlocked, 50,000 coins, no goals. Build what you like.</span></button>
       </div>

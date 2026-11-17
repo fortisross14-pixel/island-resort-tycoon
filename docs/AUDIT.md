@@ -59,14 +59,14 @@ with autosave.
 - **C · Harbour Chart:** navy-on-chart-paper with signal flags; the interface stays at the edges,
   and an action ring opens around a tapped building. Most screen for the island; highest effort.
 
-## After the first Pass 3 cut (Lagoon Glass)
+## After Pass 3 (Lagoon Glass)
 
 Same iPhone 13 emulation and 17-building resort.
 
 | Measure | Before | After |
 |---|---|---|
-| Draw calls | 599 | 327 |
-| Geometries | 384 | 172 |
+| Draw calls | 599 | 158 |
+| Geometries | 384 | 208 (per-building copies kept for quick edits) |
 | Pixel ratio on phones | 2 | 1.5 |
 | Smallest text | 10 px | 12 px |
 | Tap targets under 44 px | 12+ | 0 |
@@ -75,6 +75,8 @@ Same iPhone 13 emulation and 17-building resort.
 
 Fixed: text size, targets, contrast, card overload (categories + info button + long-press),
 keyboard use of cards, placement feedback, big moments, audio, reduce-motion, draw calls, pixel
-ratio, full rebuilds, the shadow-type warning, silent save failures, hidden shortcuts (menu).
-Open: screen stack, string table, save migration and backup, onboarding, neighbour appeal,
-research tree view, real-device numbers.
+ratio, full rebuilds, the shadow-type warning, silent save failures, hidden shortcuts (menu),
+old saves (migration chain + fixtures), one copy only (daily backup), overlays (Esc closes the top
+layer), HUD polling (research and locks), onboarding (guided first day), research as a flat row
+(tier tree), no tone mapping (replaced by day/night lighting keys).
+Open: string table, neighbour appeal, real-device numbers.
