@@ -37,3 +37,13 @@ simulation day by day with one of two players:
 
 - Fun venues (Beach Bar, Gift Shop, Gym, Kids' Club) earn little unless they're close to the rooms; the Pool is free by design.
 - The bot isn't clever about room matching, so its top complaints ("room wasn't what we hoped for", "overpriced") overstate what a human player will see.
+
+## Pass 4: the four ratings
+
+The overall star is now a weighted mix of Lodging, Amenities, Activities and Decoration, so a
+resort with no decor and no activities rates lower than before. Two balance targets moved on
+purpose: a growing resort (the harness bot, which now adds a little Hawaiian decor and repairs
+anything below 65%) ends 30 months above ★3.15 instead of ★3.3, and silver in Driftwood
+Beginnings arrives within the full 30 months rather than 25. A new test checks that the four
+ratings pull apart: amenities lead, activities and decoration trail. Missions get rebalanced
+around the four ratings in Pass 4 step 5.

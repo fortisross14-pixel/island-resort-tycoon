@@ -522,7 +522,158 @@ function marina(): THREE.Group {
   return g;
 }
 
+
+// ---------- decor (Pass 4) ----------
+
+function cyl(rt: number, rb: number, h: number, color: string, x = 0, y = 0, z = 0, seg = 6): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat(color));
+  m.position.set(x, y + h / 2, z);
+  m.castShadow = true;
+  return m;
+}
+
+function palmTreeDecor(): THREE.Group {
+  const g = palm(1.15, 0.18);
+  g.add(cyl(0.16, 0.2, 0.08, PALETTE.woodDark));
+  return g;
+}
+
+function bench(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.05, 0.22, PALETTE.wood, 0, 0.2, 0));
+  g.add(box(0.7, 0.18, 0.04, PALETTE.wood, 0, 0.27, -0.1));
+  for (const x of [-0.3, 0.3]) g.add(box(0.05, 0.2, 0.2, PALETTE.woodDark, x, 0, 0));
+  return g;
+}
+
+function lampPost(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(cyl(0.035, 0.05, 0.9, '#3a4a52'));
+  g.add(box(0.18, 0.16, 0.18, '#f6d98b', 0, 0.9, 0));
+  g.add(box(0.22, 0.04, 0.22, '#3a4a52', 0, 1.06, 0));
+  return g;
+}
+
+function beachChairs(): THREE.Group {
+  const g = new THREE.Group();
+  for (const x of [-0.22, 0.22]) {
+    const seat = box(0.26, 0.05, 0.5, x < 0 ? '#ff7a59' : '#4fc6e8', x, 0.1, 0.05);
+    g.add(seat);
+    const back = box(0.26, 0.05, 0.25, x < 0 ? '#ff7a59' : '#4fc6e8', x, 0.18, -0.25);
+    back.rotation.x = -0.7;
+    g.add(back);
+  }
+  g.add(cyl(0.02, 0.02, 0.9, PALETTE.white, 0, 0, -0.1));
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.18, 8), mat('#fff4e2'));
+  shade.position.set(0, 0.95, -0.1);
+  shade.castShadow = true;
+  g.add(shade);
+  return g;
+}
+
+function flowerBed(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.1, 0.7, '#8a5a3a'));
+  const colours = ['#ff3f6c', '#ff8a3d', '#ffd23d', '#ff5fa2'];
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const r = i === 0 ? 0 : 0.22;
+    const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), mat(i % 2 ? PALETTE.palmLeaf : '#2f7d3a'));
+    bush.position.set(Math.cos(a) * r, 0.16, Math.sin(a) * r);
+    g.add(bush);
+    const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), mat(colours[i % colours.length]));
+    bloom.position.set(Math.cos(a) * r, 0.26, Math.sin(a) * r);
+    g.add(bloom);
+  }
+  return g;
+}
+
+function tikiTorch(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(cyl(0.035, 0.045, 0.95, '#6b4a2a'));
+  g.add(cyl(0.07, 0.05, 0.14, '#3d2a18', 0, 0.95, 0));
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 5), new THREE.MeshBasicMaterial({ color: '#ffb02e' }));
+  flame.position.set(0, 1.18, 0);
+  g.add(flame);
+  return g;
+}
+
+function surfboardRack(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.7, 0.06, 0.12, PALETTE.woodDark, 0, 0.55, -0.12));
+  const colours = ['#ff7a59', '#ffd23d', '#4fc6e8'];
+  colours.forEach((c, i) => {
+    const board = box(0.14, 0.95, 0.04, c, -0.22 + i * 0.22, 0, 0);
+    board.rotation.x = -0.18;
+    g.add(board);
+  });
+  return g;
+}
+
+function tikiTotem(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.36, 0.5, 0.36, '#7a4f2a'));
+  g.add(box(0.32, 0.45, 0.32, '#8e5d33', 0, 0.5, 0));
+  g.add(box(0.36, 0.4, 0.36, '#6b4422', 0, 0.95, 0));
+  // Faces: eyes and mouths on the front.
+  for (const y of [0.25, 0.72, 1.15]) {
+    for (const x of [-0.08, 0.08]) g.add(box(0.06, 0.06, 0.02, '#f2deaa', x, y, 0.19));
+    g.add(box(0.16, 0.05, 0.02, '#c0392b', 0, y - 0.13, 0.19));
+  }
+  g.add(box(0.6, 0.06, 0.16, '#2e9e4f', 0, 1.35, 0));
+  return g;
+}
+
+function hammocks(): THREE.Group {
+  const g = new THREE.Group();
+  for (const x of [-0.38, 0.38]) g.add(cyl(0.04, 0.05, 0.75, PALETTE.trunk, x, 0, 0));
+  const cloth = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.66, 8, 1, true, Math.PI, Math.PI), mat('#e64a8a'));
+  cloth.rotation.z = Math.PI / 2;
+  cloth.position.set(0, 0.48, 0);
+  g.add(cloth);
+  g.add(box(0.66, 0.02, 0.06, '#ffd23d', 0, 0.4, 0));
+  return g;
+}
+
+function bunting(): THREE.Group {
+  const g = new THREE.Group();
+  for (const x of [-0.4, 0.4]) g.add(cyl(0.025, 0.03, 1.0, PALETTE.white, x, 0, 0));
+  const colours = ['#ff3f6c', '#ffd23d', '#2ec4b6', '#7a5cff', '#ff8a3d'];
+  for (let i = 0; i < 5; i++) {
+    const t = (i + 0.5) / 5;
+    const flag = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 3), mat(colours[i]));
+    flag.rotation.x = Math.PI;
+    flag.position.set(-0.4 + t * 0.8, 0.9 - Math.sin(t * Math.PI) * 0.12, 0);
+    g.add(flag);
+  }
+  return g;
+}
+
+function welcomeArch(): THREE.Group {
+  const g = new THREE.Group();
+  for (const x of [-0.42, 0.42]) g.add(box(0.12, 1.2, 0.12, '#2ec4b6', x, 0, 0));
+  g.add(box(1.04, 0.22, 0.14, '#ff7a59', 0, 1.2, 0));
+  g.add(box(0.8, 0.1, 0.16, '#ffd23d', 0, 1.24, 0));
+  for (const x of [-0.42, 0.42]) {
+    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), mat(PALETTE.palmLeaf));
+    leaf.position.set(x, 1.44, 0);
+    g.add(leaf);
+  }
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  palmTree: palmTreeDecor,
+  bench,
+  lampPost,
+  beachChairs,
+  flowerBed,
+  tikiTorch,
+  surfboardRack,
+  tikiTotem,
+  hammocks,
+  bunting,
+  welcomeArch,
   suites,
   fineDining,
   movieTheater,

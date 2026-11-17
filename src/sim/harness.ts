@@ -21,6 +21,8 @@ export interface DayLog {
   housed: number;
   turnedAway: number;
   rating: number;
+  /** The four resort ratings and the overall (Pass 4). */
+  cats: Record<string, number>;
   research: number;
   rooms: number;
   buildings: number;
@@ -93,7 +95,14 @@ export class Bot {
     // 3. Front Desk and a Research Office once.
     for (const k of ['frontDesk', 'researchOffice'] as BuildingKind[])
       if (!this.w.buildings.some((b) => b.kind === k)) this.place(k);
-    // 4. Out of space: buy land.
+    // 4. Decor: fill gaps beside buildings along the paths, a couple of items a month.
+    const decorCount = this.w.buildings.filter((b) => BUILDINGS[b.kind].family === 'decor').length;
+    const others = this.w.buildings.length - decorCount;
+    for (let i = 0; i < 2 && decorCount + i < others * 1.5 && this.w.money > this.reserve * 4; i++) this.addDecor(decorCount + i);
+    // 5. Repairs: anything below 65% condition, while the cash reserve allows.
+    for (const b of this.w.buildings)
+      if ((b.condition ?? 100) < 65 && this.w.money - this.w.repairCost(b.id) >= this.reserve * 2) this.w.repair(b.id);
+    // 6. Out of space: buy land.
     if (this.w.money > this.w.plotPrice + this.reserve * 3 && this.spaceLeft() < 12) this.buyLand();
   }
 
@@ -150,6 +159,20 @@ export class Bot {
       for (let x = 0; x < this.w.size; x++)
         if (this.w.isFree(x, y) && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => this.w.isPath(x + dx, y + dy))) n++;
     return n;
+  }
+
+  /** A Hawaiian-themed mix, on a free tile next to both a path and a building. */
+  private addDecor(n: number): boolean {
+    const kinds: BuildingKind[] = ['flowerBed', 'tikiTorch', 'palmTree', 'flowerBed', 'tikiTotem', 'lampPost'];
+    const kind = kinds[n % kinds.length];
+    const w = this.w;
+    const near = (x: number, y: number, f: (x: number, y: number) => boolean) =>
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => f(x + dx, y + dy));
+    for (let y = 0; y < w.size; y++)
+      for (let x = 0; x < w.size; x++)
+        if (w.isFree(x, y) && near(x, y, (a, b) => w.isPath(a, b)) && near(x, y, (a, b) => !!w.buildingAt(a, b)) && w.canPlaceBuilding(kind, x, y, 0).ok)
+          return w.placeBuilding(kind, x, y, 0).ok;
+    return false;
   }
 
   /** Place a building at the first spot that works, extending paths if needed. */
@@ -263,6 +286,7 @@ export function runPlaytest(opts: RunOptions): { log: DayLog[]; analysis: Analys
       housed: r.stats.housed,
       turnedAway: r.stats.turnedAway,
       rating: Math.round(sim.rating * 100) / 100,
+      cats: Object.fromEntries(Object.entries(sim.ratings).map(([k, v]) => [k, Math.round(v * 100) / 100])),
       research: sim.research.points,
       rooms: w.buildings.filter((b) => sim.isRoom(b)).reduce((s, b) => s + sim.capacity(b), 0),
       buildings: w.buildings.length,

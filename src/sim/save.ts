@@ -20,9 +20,11 @@ type AnySim = { version: number } & Record<string, unknown>;
 const SIM_STEPS: Record<number, (s: AnySim) => AnySim> = {
   // Pass 1 step 4 added scenarios and the investor rescue.
   5: (s) => ({ ...s, version: 6, campaign: null, redDays: 0, investor: null, offer: null }),
+  // Pass 4 step 2 added the four ratings and maintenance; guests start their category scores now.
+  6: (s) => ({ ...s, version: 7, maintenance: 'normal' }),
 };
 
-export const SIM_VERSION = 6;
+export const SIM_VERSION = 7;
 
 export function migrateSim(s: AnySim): SimSnapshot {
   let cur = s;

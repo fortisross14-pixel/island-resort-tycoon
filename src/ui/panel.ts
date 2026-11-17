@@ -1,7 +1,8 @@
-import { BUILDINGS, ELEVATOR_ABOVE, ELEVATOR_COST, floorCost } from '../sim/buildings';
+import { BUILDINGS, ELEVATOR_ABOVE, ELEVATOR_COST, RATING_NAMES, THEME_NAMES, floorCost, ratingOf } from '../sim/buildings';
 import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, roomRateOf, type PriceStep } from '../sim/needs';
 import { GUEST_TYPES, type Guest, type Sim } from '../sim/sim';
-import { floorsOf, type Building } from '../sim/world';
+import { conditionOf, floorsOf, type Building } from '../sim/world';
+import { monthYear } from '../sim/calendar';
 
 type Subject = { kind: 'guest'; id: number } | { kind: 'building'; id: number } | null;
 
@@ -33,7 +34,7 @@ export class InfoPanel {
   constructor(
     root: HTMLElement,
     private sim: Sim,
-    private actions: { addFloor(id: number): void; addElevator(id: number): void },
+    private actions: { addFloor(id: number): void; addElevator(id: number): void; repair(id: number): void },
   ) {
     this.el = document.createElement('aside');
     this.el.className = 'panel';
@@ -51,6 +52,7 @@ export class InfoPanel {
       if (rate) this.sim.setRoomRate(Number(rate.dataset.tier), Number(rate.dataset.rate) as PriceStep);
       if (t.closest('[data-floor]')) this.actions.addFloor(this.subject.id);
       if (t.closest('[data-elevator]')) this.actions.addElevator(this.subject.id);
+      if (t.closest('[data-repair]')) this.actions.repair(this.subject.id);
       this.render();
     });
     root.appendChild(this.el);
@@ -119,7 +121,9 @@ export class InfoPanel {
     if (!b) return null;
     this.title.textContent = BUILDINGS[b.kind].name;
     const def = VENUES[b.kind];
-    if (!def) return this.roomHtml(b);
+    const kind = BUILDINGS[b.kind];
+    if (kind.decor) return this.conditionHtml(b) + this.decorHtml(b);
+    if (!def) return this.conditionHtml(b) + (kind.family === 'rooms' ? this.roomHtml(b) : this.serviceHtml(b));
     const v = this.sim.venue(b.id);
     const free = def.basePrice === 0;
     const prices = PRICE_STEPS.map(
@@ -131,14 +135,41 @@ export class InfoPanel {
       ? '<p class="estimate">Free to use: it pays off in happier guests and better reviews.</p>'
       : `<div class="prices" role="group" aria-label="Price per person">${prices}</div>
       <p class="estimate">Buy chance at this price: Backpackers <b>${pct('backpacker')}</b> · Couples <b>${pct('couple')}</b></p>`;
-    return `
+    return `${this.conditionHtml(b)}
       ${pricing}
       <dl>
         <dt>This month</dt><dd>${free ? `${v.visitsToday} visits` : `${v.visitsToday} sold · ${coin}${v.revenueToday}`}</dd>
         <dt>Lost</dt><dd>${v.lostToday} walked away</dd>
         <dt>Now</dt><dd>${v.serving} of ${def.capacity} served · ${v.line.length} in line</dd>
         <dt>Fills</dt><dd>${NEED_LABELS[def.need]} +${def.gain}</dd>
+        <dt>Rates</dt><dd>${RATING_NAMES[ratingOf(b.kind)]}</dd>
       </dl>`;
+  }
+
+  /** Wear and the repair button (Pass 4). */
+  private conditionHtml(b: Building): string {
+    const c = conditionOf(b);
+    const cost = this.sim.world.repairCost(b.id);
+    const note = c < 50 ? '<p class="estimate warn">Run-down: guests notice, and it spoils the view nearby.</p>' : '';
+    const repair = c < 99 ? `<button data-repair class="${c < 50 ? 'urgent' : ''}">Repair <span>${coin}${cost.toLocaleString('en-US')}</span></button>` : '';
+    return `<div class="condition">${bar(c, 'Condition')}${repair}</div>${note}`;
+  }
+
+  private decorHtml(b: Building): string {
+    const d = BUILDINGS[b.kind].decor!;
+    const here = Math.round(this.sim.appeal.at(b.x, b.y));
+    return `<p class="estimate">${BUILDINGS[b.kind].blurb}</p>
+      <dl>
+        <dt>Appeal</dt><dd>+${d.appeal} · reaches ${d.radius} tiles</dd>
+        <dt>Theme</dt><dd>${d.theme ? THEME_NAMES[d.theme] : 'Any'}</dd>
+        <dt>View here</dt><dd>${here} / 100</dd>
+        <dt>Placed</dt><dd>${monthYear(b.builtDay)}</dd>
+      </dl>
+      <p class="estimate">Three of one theme together look better; mixing themes clashes; too many in one spot is clutter.</p>`;
+  }
+
+  private serviceHtml(b: Building): string {
+    return `<p class="estimate">${BUILDINGS[b.kind].blurb}</p><dl><dt>Built</dt><dd>${monthYear(b.builtDay)}</dd></dl>`;
   }
 
   private roomHtml(b: Building): string {
@@ -161,7 +192,7 @@ export class InfoPanel {
         <dt>Tonight</dt><dd>${coin}${lodgers.filter((g) => !g.leaving).reduce((sum, g) => sum + Math.min(this.sim.roomRate(b), g.budget), 0)} expected</dd>
         <dt>Rooms</dt><dd>${lodgers.length} of ${this.sim.capacity(b)} taken</dd>
         <dt>Floors</dt><dd>${floorsOf(b)} of ${this.sim.maxFloors}${b.elevator ? ' · elevator' : ''}</dd>
-        <dt>Built</dt><dd>Day ${b.builtDay}</dd>
+        <dt>Built</dt><dd>${monthYear(b.builtDay)}</dd>
       </dl>
       <div class="floor-actions">
         ${

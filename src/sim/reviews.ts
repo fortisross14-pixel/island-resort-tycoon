@@ -1,3 +1,4 @@
+import type { RatingCategory } from './buildings';
 /**
  * Reviews and the star rating (M5). GDD: "At the end of a stay, a guest leaves a
  * review (1 to 5 stars and one line of text). Reviews feed the resort's rating, and
@@ -12,6 +13,8 @@ export interface Review {
   text: string;
   /** The building the review is about, so tapping it can jump the camera there. */
   buildingId: number | null;
+  /** Stars per resort rating (Pass 4); older reviews only have the overall. */
+  cats?: Partial<Record<RatingCategory, number>>;
 }
 
 /** Something a guest will remember when writing their review. */
@@ -52,5 +55,13 @@ export function reviewText(stars: number, memories: Memory[]): { text: string; b
 export function rating(reviews: Review[]): number {
   const recent = reviews.slice(-RATING_WINDOW);
   const sum = recent.reduce((s, r) => s + r.stars, 0) + PRIOR_STARS * PRIOR_REVIEWS;
+  return sum / (recent.length + PRIOR_REVIEWS);
+}
+
+/** One resort rating (Pass 4), from the same window of reviews; old reviews count their overall. */
+export function categoryRating(reviews: Review[], cat: RatingCategory): number {
+  // Reviews from before Pass 4 count their overall; newer ones only count what they judged.
+  const recent = reviews.slice(-RATING_WINDOW).filter((r) => !r.cats || r.cats[cat] !== undefined);
+  const sum = recent.reduce((s, r) => s + (r.cats?.[cat] ?? r.stars), 0) + PRIOR_STARS * PRIOR_REVIEWS;
   return sum / (recent.length + PRIOR_REVIEWS);
 }

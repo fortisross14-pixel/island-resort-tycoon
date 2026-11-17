@@ -30,9 +30,44 @@ export type BuildingKind =
   | 'conferenceHall'
   | 'waterVillas'
   | 'helipad'
-  | 'marina';
+  | 'marina'
+  // Decor (Pass 4): small items that make the resort prettier.
+  | 'palmTree'
+  | 'bench'
+  | 'lampPost'
+  | 'beachChairs'
+  | 'flowerBed'
+  | 'tikiTorch'
+  | 'surfboardRack'
+  | 'tikiTotem'
+  | 'hammocks'
+  | 'bunting'
+  | 'welcomeArch';
 
-export type BuildingFamily = 'rooms' | 'food' | 'fun' | 'services';
+export type BuildingFamily = 'rooms' | 'food' | 'fun' | 'services' | 'decor';
+
+/** The four resort ratings (Pass 4) plus the overall. */
+export type RatingCategory = 'lodging' | 'amenities' | 'activities' | 'decor';
+export const RATING_CATEGORIES: RatingCategory[] = ['lodging', 'amenities', 'activities', 'decor'];
+export const RATING_NAMES: Record<RatingCategory, string> = {
+  lodging: 'Lodging',
+  amenities: 'Amenities',
+  activities: 'Activities',
+  decor: 'Decoration',
+};
+
+/** Decor themes: three or more of one theme together look better; mixing them clashes. */
+export type DecorTheme = 'hawaiian' | 'caribbean';
+export const THEME_NAMES: Record<DecorTheme, string> = { hawaiian: 'Hawaiian', caribbean: 'Caribbean' };
+
+export interface DecorDef {
+  /** Appeal added at the item's own tile; it fades out to `radius` tiles away. */
+  appeal: number;
+  radius: number;
+  theme?: DecorTheme;
+  /** Beach items go on sand only. */
+  sand?: boolean;
+}
 
 /**
  * Quality class (Pass 1): how premium a building is, separate from when it unlocks.
@@ -60,6 +95,21 @@ export interface BuildingDef {
   coast?: boolean;
   /** Makes nearby rooms less quiet. */
   noisy?: boolean;
+  /** Decor items (family 'decor'). */
+  decor?: DecorDef;
+  /** Which rating a guest's visit counts towards (default: by family). */
+  rating?: RatingCategory;
+}
+
+/** Which resort rating a building feeds. */
+export function ratingOf(kind: BuildingKind): RatingCategory {
+  const d = BUILDINGS[kind];
+  if (d.rating) return d.rating;
+  return d.family === 'rooms' ? 'lodging' : d.family === 'decor' ? 'decor' : 'amenities';
+}
+
+function decor(kind: BuildingKind, name: string, cost: number, quality: Quality, blurb: string, def: DecorDef): BuildingDef {
+  return { kind, name, family: 'decor', w: 1, h: 1, cost, upkeep: Math.max(1, Math.round(cost * 0.01)), blurb, quality, unlock: 0, decor: def };
 }
 
 export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
@@ -239,6 +289,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     quality: 3,
     unlock: 2,
     coast: true,
+    rating: 'activities',
   },
   kidsClub: {
     kind: 'kidsClub',
@@ -353,7 +404,19 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     quality: 4,
     unlock: 4,
     coast: true,
+    rating: 'activities',
   },
+  palmTree: decor('palmTree', 'Palm Tree', 150, 1, 'Shade and a postcard look', { appeal: 6, radius: 2 }),
+  bench: decor('bench', 'Bench', 100, 1, 'A place to sit by the path', { appeal: 3, radius: 1 }),
+  lampPost: decor('lampPost', 'Lamp Post', 180, 1, 'Warm light along the paths', { appeal: 4, radius: 2 }),
+  beachChairs: decor('beachChairs', 'Beach Chairs', 250, 2, 'Loungers and an umbrella · sand', { appeal: 7, radius: 2, sand: true }),
+  flowerBed: decor('flowerBed', 'Hibiscus Bed', 120, 1, 'Bright flowers · Hawaiian', { appeal: 5, radius: 2, theme: 'hawaiian' }),
+  tikiTorch: decor('tikiTorch', 'Tiki Torch', 160, 1, 'Flames at dusk · Hawaiian', { appeal: 5, radius: 2, theme: 'hawaiian' }),
+  surfboardRack: decor('surfboardRack', 'Surfboard Rack', 350, 2, 'Boards in the sand · Hawaiian · sand', { appeal: 8, radius: 2, theme: 'hawaiian', sand: true }),
+  tikiTotem: decor('tikiTotem', 'Tiki Totem', 600, 3, 'A carved landmark · Hawaiian', { appeal: 13, radius: 3, theme: 'hawaiian' }),
+  hammocks: decor('hammocks', 'Hammocks', 300, 2, 'Swing between palms · Caribbean', { appeal: 7, radius: 2, theme: 'caribbean' }),
+  bunting: decor('bunting', 'Bunting', 200, 1, 'Strings of colour · Caribbean', { appeal: 5, radius: 2, theme: 'caribbean' }),
+  welcomeArch: decor('welcomeArch', 'Welcome Arch', 700, 3, 'A painted gateway · Caribbean', { appeal: 14, radius: 3, theme: 'caribbean' }),
 };
 
 /** GDD: "Restaurant (themed: Italian, Seafood, Asian)", moved to tier 2 in Pass 1. */

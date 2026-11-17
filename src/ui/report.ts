@@ -1,3 +1,4 @@
+import { RATING_CATEGORIES, RATING_NAMES } from '../sim/buildings';
 import { duration, monthName, monthYear } from '../sim/calendar';
 import type { Review } from '../sim/reviews';
 import { GUEST_TYPES, type GuestType, type NightLine, type NightReport } from '../sim/sim';
@@ -100,6 +101,11 @@ export class NightReportView {
           <div>
             <h3>Rating</h3>
             <p class="rating-line"><span class="stars">${starsText(r.ratingAfter)}</span> <b>${r.ratingAfter.toFixed(1)}</b> <small>${trend}</small></p>
+            ${r.ratings ? `<div class="cat-ratings">${RATING_CATEGORIES.map((c) => {
+              const d = r.ratings![c] - (r.ratingsBefore?.[c] ?? r.ratings![c]);
+              const t = Math.abs(d) < 0.05 ? '' : d > 0 ? `▲ ${d.toFixed(1)}` : `▼ ${(-d).toFixed(1)}`;
+              return `<span>${RATING_NAMES[c]}</span><b>${r.ratings![c].toFixed(1)}</b><small>${t}</small>`;
+            }).join('')}</div>` : ''}
             <h3>Guests</h3>
             <p>${s.arrived} arrived · ${s.housed} checked in · ${s.turnedAway} gave up · ${r.checkingOut} checking out</p>
             <p>Tomorrow’s ferry: about <b>${r.nextArrivals}</b> parties</p>

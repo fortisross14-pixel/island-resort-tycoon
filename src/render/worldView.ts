@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { footprint, type BuildingKind, type Rotation } from '../sim/buildings';
+import { BUILDINGS, footprint, type BuildingKind, type Rotation } from '../sim/buildings';
 import type { Tile, World } from '../sim/world';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildingModel, mat, mergeByMaterial, mergeLayer, pathMesh, stackedModel } from './models';
@@ -344,6 +344,15 @@ export class WorldView {
     });
     this.ghostGroup.add(placeModel(model, kind, x, y, rot, tileTop(this.world, x, y)));
     this.highlight(this.world.footprintTiles(kind, x, y, rot), ok ? 'ok' : 'bad');
+    // Decor: show how far its appeal reaches.
+    const d = BUILDINGS[kind].decor;
+    if (d && ok) {
+      const ring: Tile[] = [];
+      for (let dy = -d.radius; dy <= d.radius; dy++)
+        for (let dx = -d.radius; dx <= d.radius; dx++)
+          if ((dx || dy) && Math.hypot(dx, dy) <= d.radius + 0.5 && this.world.isGround(x + dx, y + dy)) ring.push({ x: x + dx, y: y + dy });
+      this.addTiles(ring, 'info');
+    }
   }
 
   hideGhost(): void {
@@ -400,6 +409,10 @@ export class WorldView {
 
   highlight(tiles: Tile[], tone: HighlightTone): void {
     clear(this.highlightGroup);
+    this.addTiles(tiles, tone);
+  }
+
+  private addTiles(tiles: Tile[], tone: HighlightTone): void {
     for (const t of tiles) {
       if (!this.world.inBounds(t.x, t.y)) continue;
       const m = new THREE.Mesh(this.tileGeo, this.tileMats[tone]);

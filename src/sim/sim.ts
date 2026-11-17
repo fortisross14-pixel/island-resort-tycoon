@@ -21,7 +21,22 @@ import {
 } from './needs';
 import { PathGraph, UNREACHABLE } from './pathGraph';
 import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './research';
-import { rating, reviewText, starsFor, type Memory, type Review } from './reviews';
+import { categoryRating, rating, reviewText, starsFor, type Memory, type Review } from './reviews';
+import {
+  AppealMap,
+  BASE_WEAR,
+  MAINTENANCE_COST,
+  MAINTENANCE_WEAR,
+  addScore,
+  emptyScores,
+  overallScore,
+  scoreOf,
+  wearPenalty,
+  type CategoryScores,
+  type MaintenanceLevel,
+} from './ratings';
+import { RATING_CATEGORIES, ratingOf, type RatingCategory } from './buildings';
+import { conditionOf } from './world';
 import { Campaign, type CampaignState } from './scenario';
 import { Rng } from './rng';
 import { floorsOf, type Building, type Result, type Tile, type World } from './world';
@@ -245,6 +260,8 @@ export interface Guest {
   declined: number[];
   /** Highlights and complaints for their review. */
   memories: Memory[];
+  /** What they think of each rating category so far (Pass 4). */
+  scores?: CategoryScores;
   /** Building id of their room, or null when unhoused. */
   roomId: number | null;
   nightsLeft: number;
@@ -315,6 +332,9 @@ export interface NightReport {
   reviews: Review[];
   ratingBefore: number;
   ratingAfter: number;
+  /** The four resort ratings now, and a month ago (Pass 4). */
+  ratings?: Record<RatingCategory | 'overall', number>;
+  ratingsBefore?: Record<RatingCategory | 'overall', number>;
   best: string | null;
   worst: string | null;
   nextArrivals: number;
@@ -353,7 +373,9 @@ export interface Venue {
 }
 
 export interface SimSnapshot {
-  version: 6;
+  version: 7;
+  /** Monthly maintenance spend (Pass 4). */
+  maintenance: MaintenanceLevel;
   campaign: CampaignState | null;
   redDays: number;
   investor: Investor | null;
@@ -426,6 +448,10 @@ export class Sim {
   /** The game pauses on the night report; headless runs carry straight on. */
   pauseAtNight = false;
   readonly research = new Research();
+  /** Monthly maintenance spend: more slows wear (Pass 4). */
+  maintenance: MaintenanceLevel = 'normal';
+  /** Decoration appeal per tile. */
+  readonly appeal: AppealMap;
   /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
   progression = false;
   /** The scenario being played, or null for sandbox and tests. */
@@ -448,6 +474,7 @@ export class Sim {
     this.paths = new PathGraph(world);
     world.onChange(() => (this.stale = true));
     world.gate = (kind) => this.buildGate(kind);
+    this.appeal = new AppealMap(world);
   }
 
   // ---------- research (Pass 1) ----------
@@ -601,6 +628,44 @@ export class Sim {
     return rating(this.reviews);
   }
 
+  /** One of the four resort ratings, 1–5 (Pass 4). */
+  categoryRating(cat: RatingCategory): number {
+    return categoryRating(this.reviews, cat);
+  }
+
+  get ratings(): Record<RatingCategory | 'overall', number> {
+    return {
+      overall: this.rating,
+      lodging: this.categoryRating('lodging'),
+      amenities: this.categoryRating('amenities'),
+      activities: this.categoryRating('activities'),
+      decor: this.categoryRating('decor'),
+    };
+  }
+
+  /** The ratings from reviews written before a month (for the report's trend). */
+  private ratingsAt(month: number): Record<RatingCategory | 'overall', number> {
+    const old = this.reviews.filter((rv) => rv.day < month);
+    return {
+      overall: rating(old),
+      lodging: categoryRating(old, 'lodging'),
+      amenities: categoryRating(old, 'amenities'),
+      activities: categoryRating(old, 'activities'),
+      decor: categoryRating(old, 'decor'),
+    };
+  }
+
+  /** A guest's running category scores (created on first use; old saves have none). */
+  private scores(g: Guest): CategoryScores {
+    return (g.scores ??= emptyScores());
+  }
+
+  /** What a guest standing at their tile thinks of the view. */
+  private lookAround(g: Guest): void {
+    const t = g.tile;
+    if (t) addScore(this.scores(g), 'decor', this.appeal.at(t.x, t.y));
+  }
+
   match(g: Guest, room: Building): Match {
     const m = matchScore(this.paths, this.world, g, room, this.roomRate(room));
     if (this.needsElevator(room)) {
@@ -666,13 +731,18 @@ export class Sim {
         const club = clubs.find((c) => this.near(room, c, 3));
         if (club) {
           g.satisfaction = Math.max(0, g.satisfaction - 6);
+          addScore(this.scores(g), 'lodging', 25);
           this.remember(g, club.id, -10, 'the nightclub kept us up all night');
         }
       }
+      // Each night in the room: how well it suits them, minus wear and tear.
+      // A bed and a roof count for something even when the room isn't quite their style.
+      addScore(this.scores(g), 'lodging', 25 + g.roomScore * 0.75 - wearPenalty(conditionOf(room)));
       const rate = this.roomRate(room);
       const paid = Math.min(rate, g.budget);
       if (rate > g.budget) {
         g.satisfaction = Math.max(0, g.satisfaction - 8);
+        addScore(this.scores(g), 'lodging', 30);
         this.remember(g, room.id, -12, 'the room was overpriced');
       }
       this.world.earn(paid);
@@ -696,6 +766,13 @@ export class Sim {
       t.upkeep += up;
     }
     if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
+    const maint = Math.round(t.upkeep * MAINTENANCE_COST[this.maintenance]);
+    if (maint) {
+      this.world.earn(-maint);
+      t.upkeep += maint;
+      costs.push({ buildingId: null, name: 'Maintenance', amount: -maint, detail: `${this.maintenance} level` });
+    }
+    this.wearBuildings();
     if (t.supplies) costs.push({ buildingId: null, name: 'Supplies', amount: -t.supplies, detail: '30% of food sales' });
     let investorCut = 0;
     if (this.investor) {
@@ -740,6 +817,8 @@ export class Sim {
       reviews,
       ratingBefore: rating(this.reviews.filter((rv) => rv.day < this.day)),
       ratingAfter: this.rating,
+      ratings: this.ratings,
+      ratingsBefore: this.ratingsAt(this.day),
       best: this.bestMoment(income),
       worst: this.worstMoment(),
       nextArrivals: arrivalsForDay(this.day + 1, this.rating),
@@ -755,6 +834,20 @@ export class Sim {
     this.emit({ type: 'night', report });
     if (this.pauseAtNight) this.night = report;
     else this.startDay();
+  }
+
+  /** A month of use: everything wears a little, busy places more, good maintenance less. */
+  private wearBuildings(): void {
+    const k = MAINTENANCE_WEAR[this.maintenance];
+    for (const b of this.world.buildings) {
+      const def = BUILDINGS[b.kind];
+      let use = 0;
+      if (def.family === 'rooms') use = this.capacity(b) ? this.occupancy(b.id) / this.capacity(b) : 0;
+      else if (this.venues[b.id]) use = Math.min(1, this.venues[b.id].visitsToday / 40);
+      const wear = (BASE_WEAR[def.family] ?? 1) * (1 + 0.5 * use) * k;
+      b.condition = Math.max(0, Math.round((conditionOf(b) - wear) * 10) / 10);
+    }
+    this.appeal.invalidate();
   }
 
   private bestMoment(income: NightLine[]): string | null {
@@ -847,9 +940,19 @@ export class Sim {
   }
 
   private writeReview(g: Guest, forceStars?: number): void {
-    const stars = forceStars ?? starsFor(g.satisfaction);
+    const sc = this.scores(g);
+    // Satisfaction still counts for amenities: it carries how fed and entertained they were.
+    const amen = sc.n.amenities ? 0.5 * scoreOf(sc, 'amenities') + 0.5 * g.satisfaction : 0.8 * g.satisfaction;
+    sc.sum.amenities = amen;
+    sc.n.amenities = 1;
+    // A party that never got a room only judges the lodging and the welcome.
+    const cats: Partial<Record<RatingCategory, number>> =
+      forceStars !== undefined
+        ? { lodging: forceStars, amenities: forceStars }
+        : (Object.fromEntries(RATING_CATEGORIES.map((c) => [c, starsFor(scoreOf(sc, c))])) as Record<RatingCategory, number>);
+    const stars = forceStars ?? starsFor(overallScore(g.type, sc));
     const { text, buildingId } = reviewText(stars, g.memories);
-    const review: Review = { id: this.nextReviewId++, day: this.day, guestType: g.type, stars, text, buildingId };
+    const review: Review = { id: this.nextReviewId++, day: this.day, guestType: g.type, stars, text, buildingId, cats };
     this.reviews.push(review);
     // GDD: "Research Points come from guest reviews (each star = 1 point)".
     this.addResearch(stars);
@@ -1027,8 +1130,14 @@ export class Sim {
     if (g.state === 'inside' && g.insideId === g.roomId) return;
     if (g.state !== 'walking' && g.state !== 'inline' && g.state !== 'inside') return;
     for (const n of NEEDS) g.needs[n] = Math.max(0, g.needs[n] - DECAY[n] * dt);
-    if (g.needs.hunger < 10) this.remember(g, null, -8, 'we were always hungry');
-    if (g.needs.fun < 10) this.remember(g, null, -6, 'there was nothing to do');
+    if (g.needs.hunger < 10 && !g.memories.some((m) => m.text === 'we were always hungry')) {
+      addScore(this.scores(g), 'amenities', 15);
+      this.remember(g, null, -8, 'we were always hungry');
+    }
+    if (g.needs.fun < 10 && !g.memories.some((m) => m.text === 'there was nothing to do')) {
+      addScore(this.scores(g), 'activities', 15);
+      this.remember(g, null, -6, 'there was nothing to do');
+    }
     const low = g.needs[lowestNeed(g.needs)];
     if (low < 25) g.satisfaction = Math.max(0, g.satisfaction - 0.25 * dt);
     else if (low > 60) g.satisfaction = Math.min(100, g.satisfaction + 0.04 * dt);
@@ -1084,6 +1193,9 @@ export class Sim {
     }
     if (goal.kind === 'tile') {
       g.needs.fun = Math.min(100, g.needs.fun + STROLL_FUN);
+      // Exploring counts as a (modest) activity, better where the island is pretty.
+      addScore(this.scores(g), 'activities', 38 + this.appeal.at(goal.tile.x, goal.tile.y) * 0.3);
+      this.lookAround(g);
       g.thought = this.rng.pick(['What a lovely island.', 'Look at that water!', 'Nice little stroll.']);
       return this.decide(g);
     }
@@ -1131,6 +1243,7 @@ export class Sim {
 
   private walkAway(g: Guest, b: Building, v: Venue, thought: string, penalty: number): void {
     v.lostToday++;
+    addScore(this.scores(g), ratingOf(b.kind) === 'activities' ? 'activities' : 'amenities', 30);
     this.remember(g, b.id, -penalty * 2, thought.replace(/[.!]$/, '').replace(/^./, (c) => c.toLowerCase()));
     g.satisfaction = Math.max(0, g.satisfaction - penalty);
     g.thought = thought;
@@ -1183,6 +1296,9 @@ export class Sim {
       this.remember(g, b.id, -3, `the ${name} felt a bit basic`);
     }
     g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + mood));
+    const cat = ratingOf(b.kind) === 'activities' ? 'activities' : 'amenities';
+    addScore(this.scores(g), cat, 64 + mood * 6 - wearPenalty(conditionOf(b)));
+    this.lookAround(g);
     g.state = 'inside';
     g.insideId = b.id;
     g.timer = def.service * this.rng.range(0.85, 1.15);
@@ -1258,6 +1374,8 @@ export class Sim {
     g.roomId = room.id;
     g.satisfaction = score;
     g.roomScore = score;
+    addScore(this.scores(g), 'lodging', score - wearPenalty(conditionOf(room)));
+    addScore(this.scores(g), 'decor', this.appeal.at(room.x, room.y));
     if (GUEST_TYPES[g.type].impatient && !this.hasFrontDesk) {
       g.satisfaction = Math.max(0, g.satisfaction - 10);
       this.remember(g, null, -8, 'check-in took forever');
@@ -1512,7 +1630,8 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 6,
+      version: 7,
+      maintenance: this.maintenance,
       campaign: this.campaign ? this.campaign.snapshot() : null,
       redDays: this.redDays,
       investor: this.investor ? { ...this.investor } : null,
@@ -1534,7 +1653,8 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 6) throw new Error('Incompatible save');
+    if (s.version !== 7) throw new Error('Incompatible save');
+    this.maintenance = s.maintenance;
     this.campaign?.dispose();
     this.campaign = s.campaign ? new Campaign(this, s.campaign.scenario, structuredClone(s.campaign)) : null;
     this.redDays = s.redDays;
@@ -1559,7 +1679,8 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 6,
+      version: 7,
+      maintenance: 'normal',
       campaign: null,
       redDays: 0,
       investor: null,

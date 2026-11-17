@@ -1,5 +1,6 @@
+import { MAINTENANCE_LEVELS, MAINTENANCE_NAMES, type MaintenanceLevel } from '../sim/ratings';
 import { yearOf } from '../sim/calendar';
-import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
+import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, RATING_CATEGORIES, RATING_NAMES, type BuildingKind, type RatingCategory } from '../sim/buildings';
 import { nodeFor } from '../sim/research';
 import { WISHES, type Wish } from '../sim/match';
 import { BRANCHES, GATE_COUNT, type NodeStatus, type ResearchNode } from '../sim/research';
@@ -8,6 +9,8 @@ import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 export type TrayItem = BuildingKind | 'path' | 'land';
 
 export interface HudHandlers {
+  /** Maintenance level picked in the ratings popover (Pass 4). */
+  onMaintenance(level: MaintenanceLevel): void;
   onTrayDown(item: TrayItem, e: PointerEvent): void;
   /** A card chosen from the keyboard (no drag). */
   onTraySelect(item: TrayItem): void;
@@ -29,7 +32,7 @@ export interface HudHandlers {
 /** Which sheet is open above the dock; 'none' leaves the island clear. */
 export type Tab = 'build' | 'guests' | 'research' | 'none';
 
-export type Category = 'paths' | 'rooms' | 'food' | 'fun' | 'services';
+export type Category = 'paths' | 'rooms' | 'food' | 'fun' | 'services' | 'decor';
 
 const WISH_ICONS: Record<Wish, string> = {
   conference: '<svg viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" fill="#34495e"/><rect x="4" y="6" width="8" height="4" fill="#9fd8ee"/></svg>',
@@ -72,6 +75,17 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  palmTree: '<svg viewBox="0 0 32 32"><path d="M15 29 C14 22 15 15 17 10" stroke="#9b6b43" stroke-width="2.5" fill="none"/><path d="M17 10 C12 6 7 7 4 11 C9 9 13 10 17 10Z M17 10 C17 5 14 2 10 2 C14 5 15 7 17 10Z M17 10 C21 6 25 6 28 8 C24 8 20 9 17 10Z M17 10 C22 11 25 14 26 18 C23 14 20 12 17 10Z" fill="#3f9a52"/></svg>',
+  bench: '<svg viewBox="0 0 32 32"><rect x="5" y="16" width="22" height="3" fill="#a8754a"/><rect x="5" y="10" width="22" height="3" fill="#a8754a"/><rect x="7" y="19" width="2" height="7" fill="#7d5534"/><rect x="23" y="19" width="2" height="7" fill="#7d5534"/></svg>',
+  lampPost: '<svg viewBox="0 0 32 32"><rect x="15" y="10" width="2" height="19" fill="#3a4a52"/><rect x="12" y="4" width="8" height="7" rx="1" fill="#f6d98b"/><rect x="11" y="3" width="10" height="2" fill="#3a4a52"/></svg>',
+  beachChairs: '<svg viewBox="0 0 32 32"><path d="M4 12 Q16 2 28 12 Z" fill="#fff4e2" stroke="#e0c58a"/><rect x="15.5" y="11" width="1" height="16" fill="#999"/><path d="M4 26 L10 20 L14 20 L9 26Z" fill="#ff7a59"/><path d="M18 26 L24 20 L28 20 L23 26Z" fill="#4fc6e8"/></svg>',
+  flowerBed: '<svg viewBox="0 0 32 32"><rect x="4" y="22" width="24" height="6" rx="2" fill="#8a5a3a"/><circle cx="10" cy="18" r="5" fill="#3f9a52"/><circle cx="22" cy="18" r="5" fill="#2f7d3a"/><circle cx="16" cy="15" r="5" fill="#3f9a52"/><circle cx="10" cy="15" r="2.5" fill="#ff3f6c"/><circle cx="17" cy="12" r="2.5" fill="#ffd23d"/><circle cx="23" cy="16" r="2.5" fill="#ff5fa2"/></svg>',
+  tikiTorch: '<svg viewBox="0 0 32 32"><rect x="15" y="12" width="2.5" height="17" fill="#6b4a2a"/><rect x="13.5" y="9" width="5.5" height="4" fill="#3d2a18"/><path d="M16.2 2 C19 5 19 8 16.2 9 C13.5 8 13.5 5 16.2 2Z" fill="#ffb02e"/></svg>',
+  surfboardRack: '<svg viewBox="0 0 32 32"><ellipse cx="9" cy="16" rx="3" ry="12" fill="#ff7a59"/><ellipse cx="16" cy="16" rx="3" ry="12" fill="#ffd23d"/><ellipse cx="23" cy="16" rx="3" ry="12" fill="#4fc6e8"/><rect x="4" y="18" width="24" height="2.5" fill="#7d5534"/></svg>',
+  tikiTotem: '<svg viewBox="0 0 32 32"><rect x="10" y="4" width="12" height="25" fill="#8e5d33"/><rect x="8" y="3" width="16" height="3" fill="#2e9e4f"/><rect x="12" y="9" width="3" height="3" fill="#f2deaa"/><rect x="17" y="9" width="3" height="3" fill="#f2deaa"/><rect x="12" y="14" width="8" height="2" fill="#c0392b"/><rect x="12" y="19" width="3" height="3" fill="#f2deaa"/><rect x="17" y="19" width="3" height="3" fill="#f2deaa"/><rect x="12" y="24" width="8" height="2" fill="#c0392b"/></svg>',
+  hammocks: '<svg viewBox="0 0 32 32"><rect x="4" y="8" width="2.5" height="20" fill="#9b6b43"/><rect x="25.5" y="8" width="2.5" height="20" fill="#9b6b43"/><path d="M6 12 Q16 26 26 12 Q16 20 6 12Z" fill="#e64a8a"/><path d="M8 14 Q16 21 24 14" stroke="#ffd23d" stroke-width="1.5" fill="none"/></svg>',
+  bunting: '<svg viewBox="0 0 32 32"><rect x="3" y="6" width="2" height="22" fill="#ddd"/><rect x="27" y="6" width="2" height="22" fill="#ddd"/><path d="M4 8 Q16 16 28 8" stroke="#888" fill="none"/><path d="M7 9.5 L11 11.5 L8 16Z" fill="#ff3f6c"/><path d="M12 12 L16 12.5 L14 17Z" fill="#ffd23d"/><path d="M17 12.5 L21 12 L19 17Z" fill="#2ec4b6"/><path d="M22 11.5 L26 9.5 L24.5 15Z" fill="#7a5cff"/></svg>',
+  welcomeArch: '<svg viewBox="0 0 32 32"><rect x="5" y="9" width="3.5" height="20" fill="#2ec4b6"/><rect x="23.5" y="9" width="3.5" height="20" fill="#2ec4b6"/><rect x="3" y="6" width="26" height="6" rx="1" fill="#ff7a59"/><rect x="7" y="7.5" width="18" height="3" fill="#ffd23d"/><circle cx="6.5" cy="5" r="3" fill="#3f9a52"/><circle cx="25.5" cy="5" r="3" fill="#3f9a52"/></svg>',
   suites: '<svg viewBox="0 0 32 32"><rect x="5" y="9" width="22" height="18" fill="#fdfaf3"/><rect x="4" y="7" width="24" height="3" fill="#c9a227"/><rect x="8" y="13" width="5" height="5" fill="#3b6e8f"/><rect x="19" y="13" width="5" height="5" fill="#3b6e8f"/><path d="M14 4 l2 -2 l2 2 l-2 2 Z" fill="#c9a227"/></svg>',
   fineDining: '<svg viewBox="0 0 32 32"><rect x="5" y="10" width="22" height="16" fill="#2c2c34"/><rect x="4" y="8" width="24" height="3" fill="#c9a227"/><rect x="8" y="14" width="16" height="6" fill="#f6d98b"/></svg>',
   movieTheater: '<svg viewBox="0 0 32 32"><rect x="4" y="8" width="24" height="19" fill="#7d3c98"/><rect x="7" y="11" width="18" height="6" fill="#f2b441"/><rect x="12" y="20" width="8" height="7" fill="#2a1a33"/></svg>',
@@ -132,6 +146,7 @@ const UI: Record<string, string> = {
   rooms: '<svg viewBox="0 0 24 24" class="ico"><path d="M3 6h2v6h6V8h7a3 3 0 0 1 3 3v8h-2v-3H5v3H3zM7.5 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>',
   food: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 2h2v7a3 3 0 0 1-2 2.8V22H5V11.8A3 3 0 0 1 3 9V2h2v6h1V2h1zm9 0c2.2 0 4 2.7 4 6.5 0 2.4-1 4-2.5 4.5V22h-2V2z"/></svg>',
   fun: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 3a9 9 0 0 1 9 9h-8v8a1.5 1.5 0 0 1-3 0v-1h2v1h-.5V12H3a9 9 0 0 1 9-9z"/></svg>',
+  decor: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2c1.2 2.6 3.6 3.4 6 3-1 2.4-.5 4.6 1.5 6.3-2.6.6-4 2.6-4 5.2-2-1.6-4.4-1.6-6.5 0 0-2.6-1.4-4.6-4-5.2C7 9.6 7.5 7.4 6.5 5c2.4.4 4.8-.4 5.5-3zm-1 15h2v5h-2z"/></svg>',
   services: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 4a1.5 1.5 0 0 1 1.5 1.5v.3A6 6 0 0 1 18 11.7V16l2 2v1H4v-1l2-2v-4.3a6 6 0 0 1 4.5-5.9v-.3A1.5 1.5 0 0 1 12 4zm-2 16h4a2 2 0 0 1-4 0z"/></svg>',
 };
 
@@ -141,6 +156,7 @@ const CATEGORIES: Array<{ id: Category; label: string }> = [
   { id: 'food', label: 'Food' },
   { id: 'fun', label: 'Fun' },
   { id: 'services', label: 'Services' },
+  { id: 'decor', label: 'Decor' },
 ];
 
 export function categoryOf(item: TrayItem): Category {
@@ -202,13 +218,19 @@ export class Hud {
       <div class="sky-tint" aria-hidden="true"></div>
       <header class="top">
         <div class="chip glass" title="Coins">${UI.coin}<b data-coins>0</b></div>
-        <div class="chip glass" title="Star rating: average of the last 50 reviews">${UI.star}<b data-rating>2.5</b></div>
+        <button class="chip glass" data-ratings aria-expanded="false" title="Resort ratings">${UI.star}<b data-rating>2.5</b></button>
         <div class="chip glass clock" title="Year and date">
           <span class="day" data-day>D1</span><b data-time>07:00</b>
           <button class="speed" data-speedcycle aria-label="Game speed">1×</button>
         </div>
         <button class="chip glass round" data-menu aria-label="Menu" aria-expanded="false">${UI.menu}</button>
       </header>
+      <div class="menu-pop ratings-pop glass" data-ratingspop hidden>
+        <div class="rating-rows" data-ratingrows></div>
+        <p class="keys">Average of the last 50 reviews. Each guest type weighs the four differently.</p>
+        <div class="maint"><span>Maintenance</span><div class="seg" role="group" aria-label="Maintenance" data-maint>${MAINTENANCE_LEVELS.map((l) => `<button data-level="${l}">${MAINTENANCE_NAMES[l]}</button>`).join('')}</div></div>
+        <p class="keys" data-maintnote></p>
+      </div>
       <div class="menu-pop glass" data-menupop hidden>
         <button data-new>New island…</button>
         <button data-sound aria-pressed="true">Sound <span>On</span></button>
@@ -235,7 +257,7 @@ export class Hud {
           <div class="cards">
             <button class="card auto" data-auto title="Place everyone in their best free room (−10 match)">${UI.auto}<b>Auto</b></button>
             <div class="guest-cards" data-guest-cards></div>
-            <p class="empty" data-empty>No one is waiting. The ferry docks early each month.</p>
+            <p class="empty" data-empty>No one is waiting.</p>
           </div>
         </div>
         <div class="pane" data-pane="research" hidden>
@@ -302,6 +324,11 @@ export class Hud {
       if (c) this.setCategory(c.dataset.cat as Category);
     });
     q('[data-menu]').addEventListener('click', () => this.toggleMenu());
+    q('[data-ratings]').addEventListener('click', () => this.toggleRatings());
+    q('[data-maint]').addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-level]');
+      if (b) h.onMaintenance(b.dataset.level as MaintenanceLevel);
+    });
     q('[data-new]').addEventListener('click', () => {
       this.toggleMenu(false);
       h.onNewIsland();
@@ -319,6 +346,8 @@ export class Hud {
       const t = e.target as HTMLElement;
       if (!this.infoPop.hidden && !t.closest('[data-infopop]') && !t.closest('.card .i')) this.hideInfo();
       if (!this.menuPop.hidden && !t.closest('[data-menupop]') && !t.closest('[data-menu]')) this.toggleMenu(false);
+      const rp = this.root.querySelector<HTMLElement>('[data-ratingspop]')!;
+      if (!rp.hidden && !t.closest('[data-ratingspop]') && !t.closest('[data-ratings]')) this.toggleRatings(false);
     });
 
     const cardsEl = q<HTMLElement>('[data-cards]');
@@ -386,6 +415,27 @@ export class Hud {
     const up = Number(text) > Number(this.ratingEl.textContent);
     this.ratingEl.textContent = text;
     if (up) this.bump('rating');
+  }
+
+  /** The four ratings and the overall, with stars, plus the maintenance level. */
+  setRatings(r: Record<RatingCategory | 'overall', number>, maintenance: MaintenanceLevel): void {
+    const row = (label: string, v: number, main = false) => {
+      const full = Math.round(v);
+      const stars = '★'.repeat(full) + '☆'.repeat(5 - full);
+      return `<div class="rrow${main ? ' main' : ''}"><span>${label}</span><span class="stars" aria-hidden="true">${stars}</span><b>${v.toFixed(1)}</b></div>`;
+    };
+    const html = row('Overall', r.overall, true) + RATING_CATEGORIES.map((c) => row(RATING_NAMES[c], r[c])).join('');
+    const el = this.root.querySelector<HTMLElement>('[data-ratingrows]')!;
+    if (el.innerHTML !== html) el.innerHTML = html;
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-level]')) b.classList.toggle('on', b.dataset.level === maintenance);
+    this.root.querySelector('[data-maintnote]')!.textContent =
+      maintenance === 'low' ? 'Low: upkeep 30% cheaper, but buildings wear almost twice as fast.' : maintenance === 'high' ? 'High: upkeep 60% dearer; buildings stay like new for years.' : 'Normal: upkeep as listed; repair now and then.';
+  }
+
+  private toggleRatings(open = this.root.querySelector<HTMLElement>('[data-ratingspop]')!.hidden): void {
+    this.root.querySelector<HTMLElement>('[data-ratingspop]')!.hidden = !open;
+    this.root.querySelector('[data-ratings]')!.setAttribute('aria-expanded', String(open));
+    if (open) this.toggleMenu(false);
   }
 
   setSpeed(speed: Speed): void {
@@ -504,6 +554,11 @@ export class Hud {
 
   /** Close the menu or the card info, whichever is open (Esc). */
   closePopover(): boolean {
+    const rp = this.root.querySelector<HTMLElement>('[data-ratingspop]')!;
+    if (!rp.hidden) {
+      this.toggleRatings(false);
+      return true;
+    }
     if (!this.menuPop.hidden) {
       this.toggleMenu(false);
       return true;

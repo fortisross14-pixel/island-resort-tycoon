@@ -10,7 +10,22 @@ import type { NightReport, Sim, SimEvent } from './sim';
  * points. They give short sessions a clear target."
  */
 
-export type Metric = 'served' | 'rating' | 'profit7' | 'research' | 'plots' | 'families' | 'building';
+export type Metric =
+  | 'served'
+  | 'rating'
+  | 'profit7'
+  | 'research'
+  | 'plots'
+  | 'families'
+  | 'building'
+  // The four resort ratings (Pass 4).
+  | 'lodging'
+  | 'amenities'
+  | 'activities'
+  | 'decor';
+
+/** Metrics shown with one decimal, as star ratings. */
+export const STAR_METRICS: Metric[] = ['rating', 'lodging', 'amenities', 'activities', 'decor'];
 
 export interface Goal {
   metric: Metric;
@@ -196,6 +211,11 @@ export class Campaign {
         return this.state.families ?? 0;
       case 'building':
         return 0;
+      case 'lodging':
+      case 'amenities':
+      case 'activities':
+      case 'decor':
+        return this.sim.categoryRating(m);
     }
   }
 

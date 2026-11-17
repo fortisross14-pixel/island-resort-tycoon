@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import v5 from './fixtures/save-v5.json?raw';
 import v6 from './fixtures/save-v6.json?raw';
+import v7 from './fixtures/save-v7.json?raw';
 import { parseSave, migrateSim, SIM_VERSION } from '../src/sim/save';
 import { World } from '../src/sim/world';
 import { Sim } from '../src/sim/sim';
 
-const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6 };
+const FIXTURES: Record<string, string> = { 'save-v5.json': v5, 'save-v6.json': v6, 'save-v7.json': v7 };
 const fixture = (name: string) => FIXTURES[name];
 
 /** Load a save the way the game does and run it for a while. */
@@ -20,12 +21,22 @@ function play(raw: string): { world: World; sim: Sim } {
 }
 
 describe('saves', () => {
-  it('loads a current (v6) save and keeps playing', () => {
-    const r = parseSave(fixture('save-v6.json'));
+  it('loads a current (v7) save and keeps playing', () => {
+    const r = parseSave(fixture('save-v7.json'));
     expect(r.ok && r.migrated).toBe(false);
-    const { world, sim } = play(fixture('save-v6.json'));
+    const { world, sim } = play(fixture('save-v7.json'));
     expect(world.buildings.length).toBeGreaterThan(0);
     expect(sim.campaign).not.toBeNull();
+    expect(sim.maintenance).toBe('normal');
+  });
+
+  it('upgrades a v6 save (before the four ratings) and keeps its reviews', () => {
+    const r = parseSave(fixture('save-v6.json'));
+    expect(r.ok && r.migrated).toBe(true);
+    const { sim } = play(fixture('save-v6.json'));
+    expect(sim.maintenance).toBe('normal');
+    // Old reviews count their overall stars in every category.
+    expect(sim.categoryRating('decor')).toBeGreaterThan(0);
   });
 
   it('upgrades a v5 save (before scenarios) to the current version', () => {
@@ -40,7 +51,7 @@ describe('saves', () => {
   });
 
   it('keeps the world when the sim is from an unknown version', () => {
-    const data = JSON.parse(fixture('save-v6.json'));
+    const data = JSON.parse(fixture('save-v7.json'));
     data.sim.version = 2;
     const r = parseSave(JSON.stringify(data));
     expect(r.ok && r.save.sim === undefined && r.migrated).toBe(true);

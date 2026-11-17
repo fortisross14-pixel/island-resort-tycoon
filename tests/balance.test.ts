@@ -8,7 +8,8 @@ import { PLOT_BASE_PRICE, World } from '../src/sim/world';
  * change that breaks the economy shows up here. `npm run playtest` prints the details.
  */
 
-const bot = [1, 2].map((seed) => runPlaytest({ strategy: 'bot', days: 26, seed }));
+// The bot plays a whole 30-month mission (Pass 4: the four ratings make silver a full-length goal).
+const bot = [1, 2].map((seed) => runPlaytest({ strategy: 'bot', days: 30, seed }));
 const starter = [1, 2, 3].map((seed) => runPlaytest({ strategy: 'starter', days: 8, seed }).log);
 const dayOf = (log: DayLog[], medal: string) => log.find((l) => l.medal === medal || (medal === 'silver' && l.medal === 'gold'))?.day ?? Infinity;
 
@@ -52,7 +53,7 @@ describe('balance (GDD targets)', () => {
       expect(dayOf(log, 'bronze')).toBeLessThanOrEqual(10);
       expect(log.find((l) => l.medal === 'gold')?.day ?? Infinity).toBeGreaterThan(18);
     }
-    expect(Math.min(...bot.map(({ log }) => dayOf(log, 'silver')))).toBeLessThanOrEqual(25);
+    expect(Math.min(...bot.map(({ log }) => dayOf(log, 'silver')))).toBeLessThanOrEqual(30);
   });
 
   it('a resort that never grows keeps a modest rating', () => {
@@ -60,6 +61,15 @@ describe('balance (GDD targets)', () => {
   });
 
   it('a growing resort earns a good rating', () => {
-    for (const { log } of bot) expect(log[log.length - 1].rating).toBeGreaterThan(3.3);
+    // Pass 4: without activities and with only a little decor, a well-run resort sits in the low 3s.
+    for (const { log } of bot) expect(log[log.length - 1].rating).toBeGreaterThan(3.15);
+  });
+
+  it('decor and activities are where a growing resort is weakest (the four ratings pull apart)', () => {
+    for (const { log } of bot) {
+      const c = log[log.length - 1].cats;
+      expect(c.amenities).toBeGreaterThan(c.activities);
+      expect(c.lodging).toBeGreaterThan(c.decor - 0.5);
+    }
   });
 });

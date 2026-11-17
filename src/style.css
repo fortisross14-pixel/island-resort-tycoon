@@ -340,7 +340,7 @@ button:disabled { cursor: default; opacity: 0.4; }
 }
 @keyframes sheet { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 .pane { display: grid; gap: 10px; }
-.cats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.cats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .cats button {
   display: grid;
   justify-items: center;
@@ -770,3 +770,22 @@ button:disabled { cursor: default; opacity: 0.4; }
 .reduce-motion .banner i { display: none; }
 .coach.bump { animation: coach-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes coach-in { from { transform: translateY(-6px) scale(0.97); opacity: 0.4; } to { transform: none; opacity: 1; } }
+
+/* ---------- resort ratings (Pass 4) ---------- */
+.ratings-pop { left: max(var(--gutter), env(safe-area-inset-left)); right: auto; width: min(300px, calc(100% - 2 * var(--gutter))); padding: 12px 12px 10px; }
+.rating-rows { display: grid; gap: 2px; }
+.rrow { display: grid; grid-template-columns: 1fr auto 34px; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; font-weight: 800; font-size: 14px; }
+.rrow .stars { font-size: 15px; letter-spacing: 1px; }
+.rrow b { text-align: right; font-family: var(--display); font-variant-numeric: tabular-nums; }
+.rrow.main { min-height: 40px; border-bottom: 1px solid rgba(16, 50, 59, 0.1); margin-bottom: 4px; font-size: 16px; }
+.rrow.main b { font-size: 18px; }
+.maint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 6px 0; font-weight: 800; font-size: 14px; }
+.seg { display: flex; background: rgba(16, 50, 59, 0.08); border-radius: 22px; padding: 2px; }
+.seg button { min-height: 40px; min-width: 56px; padding: 0 10px; border-radius: 20px; font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.seg button.on { background: var(--ink); color: #fff; }
+.report .cat-ratings { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 10px; margin: 6px 0 0; font-size: 13px; }
+.report .cat-ratings b { font-family: var(--display); text-align: right; }
+.report .cat-ratings small { color: var(--ink-2); text-align: right; }
+.panel .condition { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin: 0 0 8px; }
+.panel .condition button { min-height: 44px; padding: 0 12px; border-radius: 22px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(16, 50, 59, 0.12); font-size: 13px; font-weight: 800; display: flex; gap: 4px; align-items: center; }
+.panel .condition button.urgent { background: var(--bad); color: #fff; border-color: var(--bad); }

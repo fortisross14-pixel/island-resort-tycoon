@@ -107,7 +107,16 @@ export interface Building {
   /** Room buildings can be stacked (Pass 1); 1 when absent. */
   floors?: number;
   elevator?: boolean;
+  /** Wear (Pass 4): 100 = like new. Absent means 100. */
+  condition?: number;
 }
+
+export function conditionOf(b: Building): number {
+  return b.condition ?? 100;
+}
+
+/** Repairs cost this share of what was spent on the building, for a full 0 → 100 fix. */
+export const REPAIR_SHARE = 0.4;
 
 export function floorsOf(b: Building): number {
   return b.floors ?? 1;
@@ -434,7 +443,10 @@ export class World {
       if (this.isPath(t.x, t.y)) return fail('Blocked by a path');
       if (this.buildingAt(t.x, t.y)) return fail('Blocked by a building');
     }
-    if (this.accessTiles(tiles).length === 0) return fail('Must touch a path');
+    const def = BUILDINGS[kind];
+    // Decor stands anywhere on your land: it doesn't need a path of its own.
+    if (def.family !== 'decor' && this.accessTiles(tiles).length === 0) return fail('Must touch a path');
+    if (def.decor?.sand && !tiles.every((t) => this.terrainAt(t.x, t.y) === 's' || !this.layout.terrain)) return fail('Goes on the sand');
     if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => this.isShore(t.x + dx, t.y + dy))))
       return fail('Must be on the shore');
     if (this.money < this.buildCost(kind, x, y, rot)) return fail('Not enough coins');
@@ -468,6 +480,26 @@ export class World {
     for (const t of this.footprintTiles(b.kind, b.x, b.y, b.rot)) this.occ[this.idx(t.x, t.y)] = 0;
     this.buildingsById.delete(id);
     this.money += Math.floor(investedIn(b) * DEMOLISH_REFUND);
+    this.emit();
+    return OK;
+  }
+
+  // ---------- condition (Pass 4) ----------
+
+  repairCost(id: number): number {
+    const b = this.buildingsById.get(id);
+    if (!b) return 0;
+    return Math.round((investedIn(b) * REPAIR_SHARE * (100 - conditionOf(b))) / 100 / 10) * 10;
+  }
+
+  repair(id: number): Result {
+    const b = this.buildingsById.get(id);
+    if (!b) return fail('No building there');
+    if (conditionOf(b) >= 99) return fail('It’s in good shape');
+    const cost = this.repairCost(id);
+    if (this.money < cost) return fail('Not enough coins');
+    this.money -= cost;
+    b.condition = 100;
     this.emit();
     return OK;
   }
@@ -543,7 +575,7 @@ export class World {
       for (const t of this.pathTiles())
         if (!reach.has(this.idx(t.x, t.y))) return fail('That would cut paths off from the dock');
       for (const b of this.buildingsById.values())
-        if (this.accessTiles(this.footprintTiles(b.kind, b.x, b.y, b.rot)).length === 0)
+        if (BUILDINGS[b.kind].family !== 'decor' && this.accessTiles(this.footprintTiles(b.kind, b.x, b.y, b.rot)).length === 0)
           return fail(`${BUILDINGS[b.kind].name} would lose its path`);
       return OK;
     } finally {

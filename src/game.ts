@@ -133,6 +133,11 @@ export class Game {
     this.ferryView = new FerryView(this.stage, this.sim);
     this.coinPops = new CoinPops(this.stage);
     this.hud = new Hud(hudRoot, {
+      onMaintenance: (level) => {
+        this.sim.maintenance = level;
+        this.refreshRatings();
+        this.save();
+      },
       onTrayDown: (item, e) => this.onTrayDown(item, e),
       onTraySelect: (item) => this.selectTrayItem(item),
       onGoals: () => {
@@ -161,6 +166,11 @@ export class Game {
       addElevator: (id) => {
         const r = this.history.run(() => this.world.addElevator(id));
         this.hud.toast(r.ok ? 'Elevator installed' : r.reason, r.ok ? 'good' : 'bad');
+      },
+      repair: (id) => {
+        const r = this.history.run(() => this.world.repair(id));
+        if (r.ok) this.sfx.play('place');
+        this.hud.toast(r.ok ? 'Repaired: like new' : r.reason, r.ok ? 'good' : 'bad');
       },
     });
     this.sim.pauseAtNight = true;
@@ -207,6 +217,7 @@ export class Game {
     this.applySettings(this.settings);
     this.bindInput(canvas);
     this.refreshResearch(true);
+    this.refreshRatings();
     if (!simLoaded) {
       this.setSpeed(0);
       this.newGame.show(false, !Coach.seen);
@@ -294,6 +305,7 @@ export class Game {
   }
 
   private onSimEvent(e: SimEvent): void {
+    if (e.type === 'review' || e.type === 'night') this.refreshRatings();
     if (this.coach.active) {
       if (e.type === 'ferryDocked' && e.guests > 0) this.coachBase.arrived = true;
       if (e.type === 'checkedIn') this.coachBase.checkedIn++;
@@ -350,6 +362,11 @@ export class Game {
     this.sfx.play('chime');
     const node = this.sim.researchNodes.find((n) => n.node.id === id)?.node;
     this.hud.celebrate('Research done', node ? `${node.name}: new buildings to build` : 'New buildings to build', false);
+  }
+
+  /** The ratings popover: after reviews, at night, and on a new game or load. */
+  private refreshRatings(): void {
+    this.hud.setRatings(this.sim.ratings, this.sim.maintenance);
   }
 
   /** Research cards and build locks change only with points, rating or a finished topic. */
@@ -563,6 +580,7 @@ export class Game {
     this.sim.startScenario(scenario ? scenario.id : null);
     this.attachCampaign();
     this.refreshResearch(true);
+    this.refreshRatings();
     this.report.hide();
     this.certificate.hidden = true;
     this.history.clear();

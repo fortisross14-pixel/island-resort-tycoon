@@ -233,10 +233,14 @@ campaign map with shared research ties the missions together.
    coins a tile; plot prices scale with their land area. Driftwood Beginnings is on Coconut
    Key, Family Cove and the sandbox on Twin Palms. Guest stays still read in nights: a booking
    length, not calendar time.
-2. **Ratings, decoration and maintenance.** The four ratings and the overall; a decor catalogue
+2. ✅ **Ratings, decoration and maintenance.** The four ratings and the overall; a decor catalogue
    (palms, flower beds, tiki torches, lamp posts, benches, hammocks, beach chairs, signs) with
    an appeal radius and Hawaiian and Caribbean themes; condition on every building and decor
    item, a monthly maintenance budget and repairs.
+   Done: 11 decor items in two themes (see CATALOGUE.md), appeal with theme bonus, clash and
+   clutter, the four ratings on every review and in a popover on the star chip, monthly wear,
+   three maintenance levels and repairs from the building panel. Missions can now set goals on
+   any of the four ratings.
 3. **Activities and the planner.** Dive shop and excursion pier, trail hut, yoga deck and kayak
    rental; jungle trails and boat routes drawn through points of interest; a planner with
    morning, afternoon and evening slots; guests sign up by interest and budget.

@@ -65,6 +65,43 @@ Points: 1 per review star, plus 4 a night per Research Office. A topic is bought
 | Conference Hall | 4×3 | 3 | Premium | ✅ | Brings Business guests, who hold events here (70 each); needs ★3 |
 | Helipad | 3×3 | 4 | Luxury | ✅ | Triples VIP arrivals; noisy; needs ★4 |
 
+## Decor (Pass 4)
+
+Decor stands on any tile of your land, needs no path, and adds **appeal** that fades out to its
+radius. Appeal feeds the **Decoration** rating as guests walk past. Three or more of one theme
+within 3 tiles get a 25% bonus; two of each theme side by side clash (−15%); more than four items
+in a 3×3 square is clutter; buildings below 50% condition spoil the view nearby.
+
+| Item | Cost | Appeal | Radius | Theme | Note |
+|---|---|---|---|---|---|
+| Palm Tree | 150 | 6 | 2 | — | |
+| Bench | 100 | 3 | 1 | — | |
+| Lamp Post | 180 | 4 | 2 | — | |
+| Beach Chairs | 250 | 7 | 2 | — | sand only |
+| Hibiscus Bed | 120 | 5 | 2 | Hawaiian | |
+| Tiki Torch | 160 | 5 | 2 | Hawaiian | |
+| Surfboard Rack | 350 | 8 | 2 | Hawaiian | sand only |
+| Tiki Totem | 600 | 13 | 3 | Hawaiian | |
+| Hammocks | 300 | 7 | 2 | Caribbean | |
+| Bunting | 200 | 5 | 2 | Caribbean | |
+| Welcome Arch | 700 | 14 | 3 | Caribbean | |
+
+## Ratings and maintenance (Pass 4)
+
+Every review now gives a star for **Lodging** (room match, comfort, noise, price, wear),
+**Amenities** (food, fun and services visits, plus how fed and entertained guests were),
+**Activities** (Dive Shop and Marina trips, strolls; excursions come in step 3) and
+**Decoration** (appeal where guests walk and stay). The overall star weighs the four by guest
+type: VIPs and business guests care most about lodging, party groups about amenities,
+backpackers and families about activities. Guests who never get a room only judge lodging and
+amenities.
+
+Every building has a **condition** (100 = new). It wears about 1 point a month at normal
+maintenance, more when busy. Maintenance is set in the ratings popover: Low (upkeep −30%, wear
+×1.8), Normal, High (upkeep +60%, wear ×0.35). A repair costs 40% of what was spent on the
+building for a full 0 → 100 fix. Wear lowers the building's rating category and, below 50%,
+the decoration nearby.
+
 ## Not buildings
 
 | Item | Status | Notes |

@@ -1,12 +1,12 @@
 import { islandDef } from '../sim/islands';
 import { duration, monthYear } from '../sim/calendar';
-import { MEDALS, MEDAL_NAMES, SCENARIOS, type Campaign, type MedalTier } from '../sim/scenario';
+import { MEDALS, MEDAL_NAMES, SCENARIOS, type Campaign, type MedalTier, STAR_METRICS } from '../sim/scenario';
 
 const MEDAL_ICON: Record<MedalTier, string> = { bronze: '🥉', silver: '🥈', gold: '🥇' };
 const coin = '<span class="coin-icon"></span>';
 
 function fmt(n: number, metric: string): string {
-  return metric === 'rating' ? n.toFixed(1) : Math.round(n).toLocaleString('en-US');
+  return (STAR_METRICS as string[]).includes(metric) ? n.toFixed(1) : Math.round(n).toLocaleString('en-US');
 }
 
 /** A pill under the top bar with the scenario's progress; tap it for the full list. */
