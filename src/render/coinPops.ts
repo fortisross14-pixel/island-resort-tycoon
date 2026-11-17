@@ -17,9 +17,12 @@ const MAX_POPS = 40;
 export class CoinPops {
   private pops: Pop[] = [];
   private textures = new Map<number, THREE.CanvasTexture>();
+  /** Fade in place instead of floating up. */
+  reduceMotion = false;
 
   constructor(private stage: Stage) {}
 
+  /** Negative amounts show a cost ("−1,200") in red. */
   spawn(x: number, z: number, amount: number): void {
     if (this.pops.length >= MAX_POPS) this.remove(this.pops[0]);
     const mat = new THREE.SpriteMaterial({ map: this.texture(amount), depthTest: false, transparent: true });
@@ -29,10 +32,12 @@ export class CoinPops {
     sprite.scale.set((h * img.width) / img.height, h, 1);
     sprite.center.set(0.5, 0);
     sprite.renderOrder = 12;
-    const jitter = (Math.random() - 0.5) * 0.4;
-    sprite.position.set(x + jitter, 1.2, z - jitter);
+    const jitter = amount < 0 ? 0 : (Math.random() - 0.5) * 0.4;
+    const y0 = amount < 0 ? 1.8 : 1.2;
+    sprite.position.set(x + jitter, y0, z - jitter);
     this.stage.scene.add(sprite);
-    this.pops.push({ sprite, age: 0, y0: 1.2 });
+    this.pops.push({ sprite, age: 0, y0 });
+    this.stage.requestRender();
   }
 
   /** dt in sim-speed seconds, so pops keep pace with 2× and 4×. */
@@ -45,7 +50,7 @@ export class CoinPops {
         this.remove(p);
         continue;
       }
-      p.sprite.position.y = p.y0 + t * 0.9;
+      if (!this.reduceMotion) p.sprite.position.y = p.y0 + t * 0.9;
       p.sprite.material.opacity = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
     }
     return true;
@@ -66,7 +71,7 @@ export class CoinPops {
     const ctx = c.getContext('2d')!;
     const font = `800 ${16 * s}px ui-rounded, system-ui, sans-serif`;
     ctx.font = font;
-    const text = `+${amount}`;
+    const text = amount < 0 ? `\u2212${Math.abs(amount).toLocaleString('en-US')}` : `+${amount}`;
     const tw = ctx.measureText(text).width;
     const r = 9 * s;
     c.width = Math.ceil(r * 2 + 4 * s + tw + 2 * s);
@@ -80,14 +85,15 @@ export class CoinPops {
     ctx.beginPath();
     ctx.arc(r + s, cy, r, 0, Math.PI * 2);
     ctx.fill();
+    const cost = amount < 0;
     ctx.font = font;
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 4 * s;
-    ctx.strokeStyle = 'rgba(35, 64, 74, 0.85)';
+    ctx.strokeStyle = cost ? 'rgba(110, 20, 8, 0.9)' : 'rgba(35, 64, 74, 0.85)';
     ctx.lineJoin = 'round';
     const tx = r * 2 + 4 * s;
     ctx.strokeText(text, tx, cy + s);
-    ctx.fillStyle = '#fff6d6';
+    ctx.fillStyle = cost ? '#ffd9cf' : '#fff6d6';
     ctx.fillText(text, tx, cy + s);
     t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;

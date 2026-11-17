@@ -1,4 +1,5 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
+import { nodeFor } from '../sim/research';
 import { WISHES, type Wish } from '../sim/match';
 import { BRANCHES, type NodeStatus, type ResearchNode } from '../sim/research';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
@@ -7,6 +8,8 @@ export type TrayItem = BuildingKind | 'path' | 'land';
 
 export interface HudHandlers {
   onTrayDown(item: TrayItem, e: PointerEvent): void;
+  /** A card chosen from the keyboard (no drag). */
+  onTraySelect(item: TrayItem): void;
   onRotate(): void;
   onDemolish(): void;
   onUndo(): void;
@@ -17,9 +20,15 @@ export interface HudHandlers {
   onGuestDown(id: number, e: PointerEvent): void;
   onAutoAssign(): void;
   onResearch(id: string): void;
+  onGoals(): void;
+  onToggleSound(): void;
+  onToggleMotion(): void;
 }
 
-export type Tab = 'build' | 'guests' | 'research';
+/** Which sheet is open above the dock; 'none' leaves the island clear. */
+export type Tab = 'build' | 'guests' | 'research' | 'none';
+
+export type Category = 'paths' | 'rooms' | 'food' | 'fun' | 'services';
 
 const WISH_ICONS: Record<Wish, string> = {
   conference: '<svg viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" fill="#34495e"/><rect x="4" y="6" width="8" height="4" fill="#9fd8ee"/></svg>',
@@ -99,173 +108,411 @@ const ICONS: Record<TrayItem, string> = {
     '<svg viewBox="0 0 32 32"><rect x="5" y="12" width="22" height="15" fill="#fff4e2"/><rect x="3" y="9" width="26" height="4" fill="#f2b441"/><rect x="10" y="4" width="12" height="5" fill="#3fa7a0"/><rect x="11" y="17" width="10" height="5" fill="#a8754a"/></svg>',
 };
 
-/** Plain-DOM overlay: top bar, build tray, tool bar and toasts. */
+/** Line icons for the HUD itself (24×24, currentColor). */
+const UI: Record<string, string> = {
+  coin: '<svg viewBox="0 0 24 24" class="ico coin"><circle cx="12" cy="12" r="10" fill="#f5b82e"/><circle cx="12" cy="12" r="6.5" fill="#ffe38a" opacity=".55"/><circle cx="12" cy="12" r="10" fill="none" stroke="#b67a0c" stroke-width="1.2"/></svg>',
+  star: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6L2.5 9.4l6.6-.8z" fill="#f2b62a" stroke="#8a5a00" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+  build: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2l10 5-10 5L2 7zm-8.2 8.1L12 14.2l8.2-4.1L22 11l-10 5-10-5zm0 4L12 18.2l8.2-4.1L22 15l-10 5-10-5z"/></svg>',
+  guests: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4.4 0 8 2.2 8 5v3H4v-3c0-2.8 3.6-5 8-5z"/></svg>',
+  research: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 2h6v2h-1v5.3l5.6 9.5A2 2 0 0 1 17.9 22H6.1a2 2 0 0 1-1.7-3.2L10 9.3V4H9zm-1.6 15h9.2l-2.4-4H9.8z"/></svg>',
+  goals: '<svg viewBox="0 0 24 24" class="ico"><path d="M6 3h12v2h3v3a4 4 0 0 1-4 4h-.3A6 6 0 0 1 13 15.9V18h3v3H8v-3h3v-2.1A6 6 0 0 1 7.3 12H7a4 4 0 0 1-4-4V5h3zm-1 4v1a2 2 0 0 0 1.4 1.9A6 6 0 0 1 6 8V7zm14 0h-1v1a6 6 0 0 1-.4 1.9A2 2 0 0 0 19 8z"/></svg>',
+  play: '<svg viewBox="0 0 24 24" class="ico"><path d="M8 5l12 7-12 7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" class="ico"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" class="ico"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>',
+  rotate: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 4a8 8 0 0 1 7.7 6h2.1L18.5 14 15 10h2.6A6 6 0 1 0 18 14.5l1.9.6A8 8 0 1 1 12 4z"/></svg>',
+  undo: '<svg viewBox="0 0 24 24" class="ico"><path d="M8 5 3 10l5 5v-3.5h6a4 4 0 0 1 0 8h-3V22h3a6.5 6.5 0 0 0 0-13H8z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 3h6l1 2h4v2H4V5h4zm-3 6h12l-1 12H7z"/></svg>',
+  check: '<svg viewBox="0 0 24 24" class="ico"><path d="M9.5 16.2 5.3 12l-1.8 1.8 6 6L21 8.3l-1.8-1.8z"/></svg>',
+  close: '<svg viewBox="0 0 24 24" class="ico"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4L12 13.4 6.4 19 5 17.6l5.6-5.6L5 6.4z"/></svg>',
+  info: '<svg viewBox="0 0 24 24" class="ico"><path d="M11 10h2v8h-2zm1-4.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 10V8a5 5 0 0 1 10 0v2h1v11H6V10zm2 0h6V8a3 3 0 0 0-6 0z"/></svg>',
+  auto: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 4a8 8 0 0 1 7.7 6h2.1L18.5 14 15 10h2.6A6 6 0 1 0 18 14.5l1.9.6A8 8 0 1 1 12 4zm-1 4h2v4.4l3 1.8-1 1.7-4-2.4z"/></svg>',
+  paths: '<svg viewBox="0 0 24 24" class="ico"><path d="M5 22c1-6 4-8 7-10s5-5 6-10h2c-1 6-4 8-7 10s-5 5-6 10z"/></svg>',
+  rooms: '<svg viewBox="0 0 24 24" class="ico"><path d="M3 6h2v6h6V8h7a3 3 0 0 1 3 3v8h-2v-3H5v3H3zM7.5 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>',
+  food: '<svg viewBox="0 0 24 24" class="ico"><path d="M7 2h2v7a3 3 0 0 1-2 2.8V22H5V11.8A3 3 0 0 1 3 9V2h2v6h1V2h1zm9 0c2.2 0 4 2.7 4 6.5 0 2.4-1 4-2.5 4.5V22h-2V2z"/></svg>',
+  fun: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 3a9 9 0 0 1 9 9h-8v8a1.5 1.5 0 0 1-3 0v-1h2v1h-.5V12H3a9 9 0 0 1 9-9z"/></svg>',
+  services: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 4a1.5 1.5 0 0 1 1.5 1.5v.3A6 6 0 0 1 18 11.7V16l2 2v1H4v-1l2-2v-4.3a6 6 0 0 1 4.5-5.9v-.3A1.5 1.5 0 0 1 12 4zm-2 16h4a2 2 0 0 1-4 0z"/></svg>',
+};
+
+const CATEGORIES: Array<{ id: Category; label: string }> = [
+  { id: 'paths', label: 'Paths' },
+  { id: 'rooms', label: 'Rooms' },
+  { id: 'food', label: 'Food' },
+  { id: 'fun', label: 'Fun' },
+  { id: 'services', label: 'Services' },
+];
+
+export function categoryOf(item: TrayItem): Category {
+  if (item === 'path' || item === 'land') return 'paths';
+  return BUILDINGS[item].family as Category;
+}
+
+const fmt = (n: number) => Math.floor(n).toLocaleString('en-US');
+
+/**
+ * Plain-DOM overlay in the Lagoon Glass style: glass chips at the top, a five-icon dock at the
+ * bottom (Build, Guests, Play, Research, Goals), and one sheet above the dock for whichever
+ * tab is open. Cards show an icon and a price; details live behind the info button.
+ */
 export class Hud {
   private coinsEl: HTMLElement;
+  private ratingEl: HTMLElement;
   private hintEl: HTMLElement;
   private toastEl: HTMLElement;
-  private toolbar: HTMLElement;
+  private tools: HTMLElement;
   private undoBtn: HTMLButtonElement;
   private rotateBtn: HTMLButtonElement;
   private demolishBtn: HTMLButtonElement;
   private cards = new Map<TrayItem, HTMLButtonElement>();
   private dayEl: HTMLElement;
   private timeEl: HTMLElement;
-  private guestsEl: HTMLElement;
-  private speedBtns: HTMLButtonElement[];
-  private tabBtns: HTMLButtonElement[];
-  private buildTray: HTMLElement;
-  private guestTray: HTMLElement;
+  private speedBtn: HTMLButtonElement;
+  private playBtn: HTMLButtonElement;
+  private dockBtns: HTMLButtonElement[];
+  private sheet: HTMLElement;
+  private buildPane: HTMLElement;
+  private guestPane: HTMLElement;
   private guestCards: HTMLElement;
   private emptyEl: HTMLElement;
   private badgeEl: HTMLElement;
+  private rbadgeEl: HTMLElement;
   private chipEl: HTMLElement;
+  private infoPop: HTMLElement;
+  private menuPop: HTMLElement;
+  private banner: HTMLElement;
   private queueKey = '';
   private patienceBars = new Map<number, HTMLElement>();
   private guestEls = new Map<number, HTMLElement>();
   private handlers: HudHandlers;
-  private researchTray!: HTMLElement;
+  private researchPane: HTMLElement;
   private researchKey = '';
   private toastTimer = 0;
+  private category: Category = 'rooms';
+  private speed: Speed = 1;
+  private lastSpeed: Speed = 1;
+  private infoFor: TrayItem | null = null;
 
   constructor(
     private root: HTMLElement,
     h: HudHandlers,
   ) {
-    root.innerHTML = `
-      <header class="topbar">
-        <div class="stat coins" title="Coins"><span class="coin-icon"></span><b data-coins>0</b></div>
-        <div class="stat" title="Day and time"><span class="lbl">Day </span><b data-day>1</b> · <span data-time>07:00</span></div>
-        <div class="stat guests" title="Guests on the island"><span class="guest-icon"></span><b data-guests>0</b></div>
-        <div class="stat rating" title="Star rating: average of the last 50 reviews" data-rating>☆☆☆☆☆</div>
-        <div class="speed" title="Speed (Space pauses)">
-          <button data-speed="0" aria-label="Pause">❚❚</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
-        </div>
-        <button class="menu" data-new title="Start a new island" aria-label="New island">↺</button>
-      </header>
-      <div class="toast" data-toast role="status" aria-live="polite"></div>
-      <footer class="bottom">
-        <div class="hint" data-hint></div>
-        <div class="toolbar" data-toolbar>
-          <button data-rotate title="Rotate (R)">⟳ Rotate</button>
-          <button data-demolish title="Demolish (X)">✕ Demolish</button>
-          <button data-undo title="Undo (Ctrl+Z)">↶ Undo</button>
-          <button data-cancel class="done" title="Done (Esc)">Done</button>
-        </div>
-        <div class="tabs" role="tablist">
-          <button data-tab="build" role="tab" class="on">Build</button>
-          <button data-tab="guests" role="tab">Guests <span class="badge" data-badge></span></button>
-          <button data-tab="research" role="tab">Research <span class="badge ok" data-rbadge></span></button>
-        </div>
-        <nav class="tray" data-tray></nav>
-        <div class="tray guest-tray" data-guest-tray hidden>
-          <button class="card auto" data-auto title="Place everyone in their best free room (−10 match)">
-            <span class="icon"><svg viewBox="0 0 32 32"><path d="M6 16 a10 10 0 0 1 17-7 l3-3 v9 h-9 l3-3 a6 6 0 1 0 2 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
-            <span class="name">Auto-assign</span><span class="sub">Best free rooms</span><span class="sub">−10 match</span>
-          </button>
-          <div class="guest-cards" data-guest-cards></div>
-          <div class="empty" data-empty>No one is waiting. The ferry docks at 08:00.</div>
-        </div>
-        <div class="tray research-tray" data-research-tray hidden>
-          <div class="points"><b data-points>0</b><span>research points</span><small>1 per review star, +4 a night per Research Office</small></div>
-          <div class="research-cards" data-research-cards></div>
-        </div>
-        <div class="chip" data-chip></div>
-      </footer>`;
     this.handlers = h;
+    root.innerHTML = `
+      <div class="sky-tint" aria-hidden="true"></div>
+      <header class="top">
+        <div class="chip glass" title="Coins">${UI.coin}<b data-coins>0</b></div>
+        <div class="chip glass" title="Star rating: average of the last 50 reviews">${UI.star}<b data-rating>2.5</b></div>
+        <div class="chip glass clock" title="Day and time">
+          <span class="day" data-day>D1</span><b data-time>07:00</b>
+          <button class="speed" data-speedcycle aria-label="Game speed">1×</button>
+        </div>
+        <button class="chip glass round" data-menu aria-label="Menu" aria-expanded="false">${UI.menu}</button>
+      </header>
+      <div class="menu-pop glass" data-menupop hidden>
+        <button data-new>New island…</button>
+        <button data-sound aria-pressed="true">Sound <span>On</span></button>
+        <button data-motion aria-pressed="false">Reduce motion <span>Off</span></button>
+        <p class="keys">Keys: 1–9 build · R rotate · X demolish · L land · G guests · Space pause · Ctrl+Z undo</p>
+      </div>
+      <div class="toast" data-toast role="status" aria-live="polite"></div>
+      <div class="banner" data-banner aria-live="polite"></div>
+      <div class="hint glass" data-hint></div>
+      <div class="tools" data-tools>
+        <button class="tool glass" data-rotate aria-label="Rotate (R)" title="Rotate (R)">${UI.rotate}</button>
+        <button class="tool glass" data-undo aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)">${UI.undo}</button>
+        <button class="tool glass" data-demolish aria-label="Demolish (X)" title="Demolish (X)">${UI.trash}</button>
+        <button class="tool done" data-cancel aria-label="Done (Esc)" title="Done (Esc)">${UI.check}</button>
+      </div>
+      <section class="sheet glass" data-sheet hidden>
+        <div class="pane" data-pane="build">
+          <div class="cats" role="tablist" data-cats>
+            ${CATEGORIES.map((c) => `<button role="tab" data-cat="${c.id}">${UI[c.id]}<span>${c.label}</span></button>`).join('')}
+          </div>
+          <div class="cards" data-cards></div>
+        </div>
+        <div class="pane" data-pane="guests" hidden>
+          <div class="cards">
+            <button class="card auto" data-auto title="Place everyone in their best free room (−10 match)">${UI.auto}<b>Auto</b></button>
+            <div class="guest-cards" data-guest-cards></div>
+            <p class="empty" data-empty>No one is waiting. The ferry docks at 08:00.</p>
+          </div>
+        </div>
+        <div class="pane" data-pane="research" hidden>
+          <div class="cards">
+            <div class="points"><b data-points>0</b><span>points</span></div>
+            <div class="research-cards" data-research-cards></div>
+          </div>
+        </div>
+      </section>
+      <div class="infopop glass" data-infopop hidden></div>
+      <nav class="dock glass" aria-label="Main">
+        <button data-dock="build">${UI.build}<span>Build</span></button>
+        <button data-dock="guests">${UI.guests}<span>Guests</span><b class="dot" data-badge></b></button>
+        <button class="play" data-play aria-label="Pause">${UI.pause}</button>
+        <button data-dock="research">${UI.research}<span>Research</span><b class="dot ok" data-rbadge></b></button>
+        <button data-dock="goals" data-goals>${UI.goals}<span>Goals</span></button>
+      </nav>
+      <div class="chip-drag" data-chip></div>`;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
-    this.tabBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
-    for (const b of this.tabBtns) b.addEventListener('click', () => h.onTab(b.dataset.tab as Tab));
-    this.buildTray = q('[data-tray]');
-    this.guestTray = q('[data-guest-tray]');
-    this.guestCards = q('[data-guest-cards]');
-    this.emptyEl = q('[data-empty]');
-    this.badgeEl = q('[data-badge]');
-    this.chipEl = q('[data-chip]');
-    this.researchTray = q('[data-research-tray]');
-    this.researchTray.addEventListener('click', (e) => {
-      const c = (e.target as HTMLElement).closest<HTMLElement>('[data-node]');
-      if (c) h.onResearch(c.dataset.node!);
-    });
-    q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
     this.coinsEl = q('[data-coins]');
+    this.ratingEl = q('[data-rating]');
     this.hintEl = q('[data-hint]');
     this.toastEl = q('[data-toast]');
-    this.toolbar = q('[data-toolbar]');
+    this.banner = q('[data-banner]');
+    this.tools = q('[data-tools]');
     this.undoBtn = q('[data-undo]');
     this.rotateBtn = q('[data-rotate]');
     this.demolishBtn = q('[data-demolish]');
     this.dayEl = q('[data-day]');
     this.timeEl = q('[data-time]');
-    this.guestsEl = q('[data-guests]');
-    this.speedBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-speed]')];
-    for (const b of this.speedBtns) b.addEventListener('click', () => h.onSpeed(Number(b.dataset.speed) as Speed));
+    this.speedBtn = q('[data-speedcycle]');
+    this.playBtn = q('[data-play]');
+    this.sheet = q('[data-sheet]');
+    this.buildPane = q('[data-pane="build"]');
+    this.guestPane = q('[data-pane="guests"]');
+    this.researchPane = q('[data-pane="research"]');
+    this.guestCards = q('[data-guest-cards]');
+    this.emptyEl = q('[data-empty]');
+    this.badgeEl = q('[data-badge]');
+    this.rbadgeEl = q('[data-rbadge]');
+    this.chipEl = q('[data-chip]');
+    this.infoPop = q('[data-infopop]');
+    this.menuPop = q('[data-menupop]');
+    this.dockBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-dock]')];
 
-    const tray = q<HTMLElement>('[data-tray]');
-    const items: TrayItem[] = ['path', ...BUILDING_KINDS, 'land'];
-    for (const item of items) {
-      const b = document.createElement('button');
-      b.className = 'card';
-      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : BUILDINGS[item].name;
-      const price =
-        item === 'path' ? `${PATH_COST} / tile` : item === 'land' ? '' : BUILDINGS[item].cost.toLocaleString('en-US');
-      const sub =
-        item === 'path'
-          ? 'Drag to draw'
-          : item === 'land'
-            ? '7×7 plots'
-            : `${QUALITY_NAMES[BUILDINGS[item].quality]} · ${BUILDINGS[item].blurb}`;
-      if (item !== 'path' && item !== 'land') {
-        const d = BUILDINGS[item];
-        b.title = `${d.name}: ${d.w}×${d.h}, ${QUALITY_NAMES[d.quality].toLowerCase()} class, ${d.blurb.toLowerCase()}${d.coast ? ', must be on the shore' : ''}`;
-      }
-      b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="name">${name}</span><span class="sub">${sub}</span><span class="price"><span class="coin-icon"></span><span data-price>${price}</span></span>`;
-      b.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        h.onTrayDown(item, e);
+    for (const b of this.dockBtns)
+      b.addEventListener('click', () => {
+        const t = b.dataset.dock!;
+        if (t === 'goals') return h.onGoals();
+        h.onTab(b.classList.contains('on') ? 'none' : (t as Tab));
       });
-      tray.appendChild(b);
-      this.cards.set(item, b);
-    }
-
+    this.playBtn.addEventListener('click', () => h.onSpeed(this.speed === 0 ? this.lastSpeed : 0));
+    this.speedBtn.addEventListener('click', () => {
+      const next: Speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : 1;
+      h.onSpeed(next);
+    });
+    q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
+    this.researchPane.addEventListener('click', (e) => {
+      const c = (e.target as HTMLElement).closest<HTMLElement>('[data-node]');
+      if (c) h.onResearch(c.dataset.node!);
+    });
+    q('[data-cats]').addEventListener('click', (e) => {
+      const c = (e.target as HTMLElement).closest<HTMLElement>('[data-cat]');
+      if (c) this.setCategory(c.dataset.cat as Category);
+    });
+    q('[data-menu]').addEventListener('click', () => this.toggleMenu());
+    q('[data-new]').addEventListener('click', () => {
+      this.toggleMenu(false);
+      h.onNewIsland();
+    });
+    q('[data-sound]').addEventListener('click', () => h.onToggleSound());
+    q('[data-motion]').addEventListener('click', () => h.onToggleMotion());
     this.rotateBtn.addEventListener('click', () => h.onRotate());
     this.demolishBtn.addEventListener('click', () => h.onDemolish());
     this.undoBtn.addEventListener('click', () => h.onUndo());
     q('[data-cancel]').addEventListener('click', () => h.onCancel());
-    q('[data-new]').addEventListener('click', () => h.onNewIsland());
+    this.infoPop.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('[data-close]')) this.hideInfo();
+    });
+    document.addEventListener('pointerdown', (e) => {
+      const t = e.target as HTMLElement;
+      if (!this.infoPop.hidden && !t.closest('[data-infopop]') && !t.closest('.card .i')) this.hideInfo();
+      if (!this.menuPop.hidden && !t.closest('[data-menupop]') && !t.closest('[data-menu]')) this.toggleMenu(false);
+    });
+
+    const cardsEl = q<HTMLElement>('[data-cards]');
+    const items: TrayItem[] = ['path', 'land', ...BUILDING_KINDS];
+    for (const item of items) {
+      const b = document.createElement('button');
+      b.className = 'card';
+      b.dataset.cat = categoryOf(item);
+      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : BUILDINGS[item].name;
+      const price = item === 'path' ? `${PATH_COST}` : item === 'land' ? '' : fmt(BUILDINGS[item].cost);
+      b.setAttribute('aria-label', name);
+      b.title = name;
+      b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="price">${UI.coin}<span data-price>${price}</span></span><span class="i" role="button" aria-label="About ${name}" tabindex="-1">${UI.info}</span><span class="lockmark">${UI.lock}</span>`;
+      let press = 0;
+      b.addEventListener('pointerdown', (e) => {
+        if ((e.target as HTMLElement).closest('.i')) return;
+        e.preventDefault();
+        // Long-press shows the details instead of picking the tool.
+        const x = e.clientX;
+        const y = e.clientY;
+        press = window.setTimeout(() => {
+          press = 0;
+          this.showInfo(item);
+        }, 450);
+        const cancel = (ev: PointerEvent) => {
+          if (ev.type === 'pointermove' && Math.hypot(ev.clientX - x, ev.clientY - y) < 8) return;
+          clearTimeout(press);
+          window.removeEventListener('pointermove', cancel);
+          window.removeEventListener('pointerup', cancel);
+        };
+        window.addEventListener('pointermove', cancel);
+        window.addEventListener('pointerup', cancel);
+        h.onTrayDown(item, e);
+      });
+      b.querySelector('.i')!.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.infoFor === item && !this.infoPop.hidden) this.hideInfo();
+        else this.showInfo(item);
+      });
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          h.onTraySelect(item);
+        }
+        if (e.key === 'i') this.showInfo(item);
+      });
+      cardsEl.appendChild(b);
+      this.cards.set(item, b);
+    }
+    this.setCategory('rooms');
   }
 
-  setClock(day: number, time: string, guests: number): void {
-    const d = String(day);
+  // ---------- top bar ----------
+
+  setClock(day: number, time: string, _guests: number): void {
+    const d = `D${day}`;
     if (this.dayEl.textContent !== d) this.dayEl.textContent = d;
     if (this.timeEl.textContent !== time) this.timeEl.textContent = time;
-    const g = String(guests);
-    if (this.guestsEl.textContent !== g) this.guestsEl.textContent = g;
   }
 
   setRating(stars: number): void {
-    const el = this.root.querySelector<HTMLElement>('[data-rating]')!;
-    const full = Math.round(stars);
-    const text = `${'★'.repeat(full)}${'☆'.repeat(5 - full)} ${stars.toFixed(1)}`;
-    if (el.textContent !== text) el.textContent = text;
+    const text = stars.toFixed(1);
+    if (this.ratingEl.textContent === text) return;
+    const up = Number(text) > Number(this.ratingEl.textContent);
+    this.ratingEl.textContent = text;
+    if (up) this.bump('rating');
   }
 
   setSpeed(speed: Speed): void {
-    for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.speed) === speed);
+    this.speed = speed;
+    if (speed > 0) this.lastSpeed = speed;
+    this.speedBtn.textContent = `${speed === 0 ? this.lastSpeed : speed}×`;
+    this.playBtn.innerHTML = speed === 0 ? UI.play : UI.pause;
+    this.playBtn.setAttribute('aria-label', speed === 0 ? 'Play' : 'Pause');
+    this.playBtn.classList.toggle('paused', speed === 0);
   }
 
-  setTab(tab: Tab): void {
-    for (const b of this.tabBtns) b.classList.toggle('on', b.dataset.tab === tab);
-    this.buildTray.hidden = tab !== 'build';
-    this.guestTray.hidden = tab !== 'guests';
-    this.researchTray.hidden = tab !== 'research';
-    this.toolbar.classList.toggle('hidden', tab !== 'build');
+  setCoins(n: number): void {
+    this.coinsEl.textContent = fmt(n);
+    this.coinsEl.classList.toggle('neg', n < 0);
   }
+
+  setSettings(sound: boolean, reduceMotion: boolean): void {
+    const s = this.root.querySelector<HTMLElement>('[data-sound]')!;
+    s.setAttribute('aria-pressed', String(sound));
+    s.querySelector('span')!.textContent = sound ? 'On' : 'Off';
+    const m = this.root.querySelector<HTMLElement>('[data-motion]')!;
+    m.setAttribute('aria-pressed', String(reduceMotion));
+    m.querySelector('span')!.textContent = reduceMotion ? 'On' : 'Off';
+  }
+
+  private toggleMenu(open = this.menuPop.hidden): void {
+    this.menuPop.hidden = !open;
+    this.root.querySelector('[data-menu]')!.setAttribute('aria-expanded', String(open));
+  }
+
+  /** A short pulse on a HUD element when its value improves. */
+  bump(what: 'coins' | 'rating' | 'research' | 'guests'): void {
+    const el =
+      what === 'coins'
+        ? this.coinsEl.parentElement!
+        : what === 'rating'
+          ? this.ratingEl.parentElement!
+          : what === 'research'
+            ? this.root.querySelector<HTMLElement>('[data-dock="research"]')!
+            : this.root.querySelector<HTMLElement>('[data-dock="guests"]')!;
+    el.classList.remove('bump');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('bump');
+  }
+
+  /** The large feedback tier: a banner with confetti (medals, scenario end). */
+  celebrate(title: string, sub: string, confetti: boolean): void {
+    const b = this.banner;
+    const bits = confetti
+      ? Array.from({ length: 24 }, (_, i) => {
+          const c = ['#ff7a59', '#ffd34d', '#4fd1c5', '#7aa7ff', '#ff9ccc'][i % 5];
+          return `<i style="--x:${(Math.random() * 2 - 1).toFixed(2)};--d:${(0.6 + Math.random() * 0.6).toFixed(2)}s;background:${c}"></i>`;
+        }).join('')
+      : '';
+    b.innerHTML = `<div class="banner-card glass"><b>${title}</b><span>${sub}</span></div>${bits}`;
+    b.classList.remove('show');
+    void b.offsetWidth;
+    b.classList.add('show');
+  }
+
+  setGoalsAvailable(on: boolean): void {
+    this.root.querySelector<HTMLElement>('[data-goals]')!.hidden = !on;
+    this.root.querySelector('.dock')!.classList.toggle('four', !on);
+  }
+
+  setGoalsOpen(on: boolean): void {
+    this.root.querySelector('[data-goals]')!.classList.toggle('on', on);
+  }
+
+  // ---------- sheet ----------
+
+  setTab(tab: Tab): void {
+    for (const b of this.dockBtns) if (b.dataset.dock !== 'goals') b.classList.toggle('on', b.dataset.dock === tab);
+    this.sheet.hidden = tab === 'none';
+    this.buildPane.hidden = tab !== 'build';
+    this.guestPane.hidden = tab !== 'guests';
+    this.researchPane.hidden = tab !== 'research';
+    this.root.classList.toggle('sheet-open', tab !== 'none');
+    if (tab !== 'build') this.hideInfo();
+  }
+
+  setCategory(cat: Category): void {
+    this.category = cat;
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-cat]'))
+      if (b.tagName === 'BUTTON' && b.closest('[data-cats]')) {
+        b.classList.toggle('on', b.dataset.cat === cat);
+        b.setAttribute('aria-selected', String(b.dataset.cat === cat));
+      }
+    for (const [, c] of this.cards) c.hidden = c.dataset.cat !== cat;
+    this.hideInfo();
+  }
+
+  /** Show the category that holds a card (e.g. after a keyboard shortcut picks it). */
+  revealCard(item: TrayItem): void {
+    if (categoryOf(item) !== this.category) this.setCategory(categoryOf(item));
+  }
+
+  private showInfo(item: TrayItem): void {
+    this.infoFor = item;
+    const p = this.infoPop;
+    let html: string;
+    if (item === 'path') html = `<b>Footpath</b><p>Drag from an existing path. Guests walk on paths, and every building must touch one.</p><dl><dt>Cost</dt><dd>${UI.coin}${PATH_COST} a tile</dd></dl>`;
+    else if (item === 'land') html = `<b>Buy land</b><p>Tap a 7×7 plot next to your island. Each plot costs more than the last.</p>`;
+    else {
+      const d = BUILDINGS[item];
+      const lock = this.cards.get(item)?.dataset.lock;
+      const node = nodeFor(item);
+      html = `<b>${d.name}</b><p>${d.blurb}${d.coast ? '. Must touch the shore.' : '.'}</p>
+        <dl><dt>Class</dt><dd>${QUALITY_NAMES[d.quality]}</dd><dt>Size</dt><dd>${d.w} × ${d.h}</dd>
+        <dt>Cost</dt><dd>${UI.coin}${fmt(d.cost)}</dd><dt>Upkeep</dt><dd>${UI.coin}${d.upkeep} a day</dd></dl>
+        ${lock ? `<p class="locked">${UI.lock} ${lock}${node ? ` (${node.cost} points)` : ''}</p>` : ''}`;
+    }
+    p.innerHTML = `<button class="x" data-close aria-label="Close">${UI.close}</button>${html}`;
+    p.hidden = false;
+  }
+
+  private hideInfo(): void {
+    this.infoPop.hidden = true;
+    this.infoFor = null;
+  }
+
+  // ---------- guests ----------
 
   /** Rebuild the arrival cards when the queue changes; cheap to call every frame. */
   setQueue(queue: Guest[]): void {
     const key = queue.map((g) => g.id).join(',');
     if (key !== this.queueKey) {
+      const grew = queue.length > this.queueKey.split(',').filter(Boolean).length;
       this.queueKey = key;
       this.guestCards.textContent = '';
       this.patienceBars.clear();
@@ -273,7 +520,8 @@ export class Hud {
       for (const g of queue) this.guestCards.appendChild(this.guestCard(g));
       this.emptyEl.hidden = queue.length > 0;
       this.badgeEl.textContent = queue.length ? String(queue.length) : '';
-      this.guestTray.querySelector<HTMLButtonElement>('[data-auto]')!.disabled = queue.length === 0;
+      this.guestPane.querySelector<HTMLButtonElement>('[data-auto]')!.disabled = queue.length === 0;
+      if (grew) this.bump('guests');
     }
     for (const g of queue) {
       const bar = this.patienceBars.get(g.id);
@@ -295,8 +543,10 @@ export class Hud {
     const wishes = g.wishes
       .map((w) => `<span class="wish" title="${WISHES[w].label}">${WISH_ICONS[w]}</span>`)
       .join('');
-    b.innerHTML = `<span class="icon">${peopleIcon(g)}</span><span class="name">${def.name}${g.size > 2 ? ` of ${g.size}` : ''}</span><span class="sub">${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} · <span class="coin-icon"></span>${g.budget}</span><span class="wishes">${wishes}</span><span class="patience"><i></i></span>`;
-    b.title = `${def.name}: wants ${g.wishes.map((w) => WISHES[w].label.toLowerCase()).join(', ')}`;
+    b.innerHTML = `<span class="icon">${peopleIcon(g)}</span><span class="gmeta"><b>${g.nightsLeft}</b>n · ${UI.coin}${g.budget}</span><span class="wishes">${wishes}</span><span class="patience"><i></i></span>`;
+    const label = `${def.name}${g.size > 2 ? ` of ${g.size}` : ''}: ${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'}, budget ${g.budget}, wants ${g.wishes.map((w) => WISHES[w].label.toLowerCase()).join(', ')}`;
+    b.title = label;
+    b.setAttribute('aria-label', label);
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.handlers.onGuestDown(g.id, e);
@@ -311,7 +561,7 @@ export class Hud {
     const c = this.chipEl;
     c.textContent = text;
     c.dataset.tone = tone;
-    c.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 64)}px) translateX(-50%)`;
+    c.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 70)}px) translateX(-50%)`;
     c.classList.add('show');
   }
 
@@ -319,10 +569,7 @@ export class Hud {
     this.chipEl.classList.remove('show');
   }
 
-  setCoins(n: number): void {
-    this.coinsEl.textContent = Math.floor(n).toLocaleString('en-US');
-    this.coinsEl.classList.toggle('neg', n < 0);
-  }
+  // ---------- build cards ----------
 
   /** Lock or unlock a build card; `reason` says what research it needs. */
   setLocked(item: TrayItem, reason: string | null): void {
@@ -336,12 +583,13 @@ export class Hud {
     return this.cards.get(item)?.dataset.lock || null;
   }
 
-  /** Research topics as cards, grouped by branch. Cheap to call often. */
+  /** Research topics as cards, grouped by tier. Cheap to call often. */
   setResearch(points: number, nodes: Array<{ node: ResearchNode; status: NodeStatus }>): void {
     const key = points + '|' + nodes.map((n) => n.node.id + n.status.state + ('reason' in n.status ? n.status.reason : '')).join(',');
     const available = nodes.filter((n) => n.status.state === 'available').length;
-    const rb = this.root.querySelector<HTMLElement>('[data-rbadge]')!;
-    rb.textContent = available ? String(available) : '';
+    const before = Number(this.rbadgeEl.textContent || 0);
+    this.rbadgeEl.textContent = available ? String(available) : '';
+    if (available > before) this.bump('research');
     if (key === this.researchKey) return;
     this.researchKey = key;
     this.root.querySelector('[data-points]')!.textContent = String(points);
@@ -351,14 +599,13 @@ export class Hud {
       .map(({ node, status }) => {
         const foot =
           status.state === 'done'
-            ? '<span class="state done">✓ Researched</span>'
+            ? `<span class="state done">${UI.check}Done</span>`
             : status.state === 'available'
-              ? `<span class="state go">Research · ${node.cost} pts</span>`
+              ? `<span class="state go">${node.cost} pts</span>`
               : `<span class="state">${status.reason}</span>`;
         return `<button class="card topic ${status.state}" data-node="${node.id}" title="${node.blurb}">
           <span class="branch">${BRANCHES[node.branch]} · T${node.tier}</span>
           <span class="name">${node.name}</span>
-          <span class="sub">${node.blurb}</span>
           ${foot}
         </button>`;
       })
@@ -368,7 +615,7 @@ export class Hud {
 
   setLandPrice(price: number): void {
     const el = this.cards.get('land')?.querySelector('[data-price]');
-    if (el) el.textContent = price.toLocaleString('en-US');
+    if (el) el.textContent = fmt(price);
   }
 
   setAffordable(item: TrayItem, ok: boolean): void {
@@ -378,8 +625,9 @@ export class Hud {
   setActive(item: TrayItem | 'demolish' | null, canRotate: boolean): void {
     for (const [k, b] of this.cards) b.classList.toggle('active', k === item);
     this.demolishBtn.classList.toggle('active', item === 'demolish');
-    this.rotateBtn.disabled = !canRotate;
-    this.toolbar.classList.toggle('tool-on', item !== null);
+    this.rotateBtn.hidden = !canRotate;
+    this.tools.classList.toggle('show', item !== null);
+    if (item && item !== 'demolish') this.revealCard(item);
   }
 
   setUndo(enabled: boolean): void {
@@ -394,8 +642,10 @@ export class Hud {
   toast(text: string, tone: 'bad' | 'info' | 'good' = 'bad'): void {
     this.toastEl.textContent = text;
     this.toastEl.dataset.tone = tone;
+    this.toastEl.classList.remove('show');
+    void this.toastEl.offsetWidth;
     this.toastEl.classList.add('show');
     clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 1800);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2200);
   }
 }

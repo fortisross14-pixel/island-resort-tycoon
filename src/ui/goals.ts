@@ -15,7 +15,7 @@ export class GoalsView {
   private last = 0;
   private openPanel = false;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private onOpenChange: (open: boolean) => void = () => {}) {
     this.pill = document.createElement('button');
     this.pill.className = 'goals-pill';
     this.pill.hidden = true;
@@ -38,9 +38,15 @@ export class GoalsView {
   }
 
   toggle(open = !this.openPanel): void {
+    const was = this.openPanel;
     this.openPanel = open && !!this.campaign;
     this.panel.hidden = !this.openPanel;
     this.render();
+    if (was !== this.openPanel) this.onOpenChange(this.openPanel);
+  }
+
+  get isOpen(): boolean {
+    return this.openPanel;
   }
 
   update(now: number): void {

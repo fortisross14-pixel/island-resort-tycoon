@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDINGS, type BuildingKind } from '../sim/buildings';
 
 /**
@@ -612,24 +613,71 @@ export function palm(height = 1.2, lean = 0.2): THREE.Group {
 }
 
 /**
- * One path tile with auto-joined edges: a centre pad plus a strip towards each
- * neighbouring path, so corners and junctions read as one continuous walkway.
- * Pieces abut exactly (never overlap) so coplanar tops cannot z-fight.
+ * Bake a model into one mesh per material (Pass 3: a building was 20–40 draw calls).
+ * Transforms are applied to the vertices, so the result can be placed and scaled as one piece.
+ * The source geometries are disposed.
  */
-export function pathTile(links: { n: boolean; s: boolean; e: boolean; w: boolean }): THREE.Group {
-  const g = new THREE.Group();
-  // Flat top quads only: box sides at shared edges rasterise as hairline seams.
+export function mergeByMaterial(model: THREE.Object3D): THREE.Group {
+  model.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(model.matrixWorld).invert();
+  const buckets = new Map<string, { mat: THREE.Material; cast: boolean; receive: boolean; geos: THREE.BufferGeometry[] }>();
+  const m = new THREE.Matrix4();
+  model.traverse((o) => {
+    if (!(o instanceof THREE.Mesh) || o instanceof THREE.InstancedMesh || Array.isArray(o.material)) return;
+    let geo = (o.geometry as THREE.BufferGeometry).clone();
+    if (geo.index) geo = geo.toNonIndexed();
+    for (const name of Object.keys(geo.attributes)) if (name !== 'position' && name !== 'normal') geo.deleteAttribute(name);
+    if (!geo.attributes.normal) geo.computeVertexNormals();
+    geo.applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+    const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}`;
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { mat: o.material, cast: o.castShadow, receive: o.receiveShadow, geos: [] }));
+    b.geos.push(geo);
+    (o.geometry as THREE.BufferGeometry).dispose();
+  });
+  const out = new THREE.Group();
+  for (const b of buckets.values()) {
+    const merged = mergeGeometries(b.geos, false);
+    for (const g of b.geos) g.dispose();
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, b.mat);
+    mesh.castShadow = b.cast;
+    mesh.receiveShadow = b.receive;
+    out.add(mesh);
+  }
+  return out;
+}
+
+/**
+ * Every footpath tile as one mesh: a centre pad per tile plus a strip towards each linked
+ * neighbour, so junctions read as one walkway. Pieces abut exactly so coplanar tops can't z-fight.
+ */
+export function pathMesh(tiles: Array<{ x: number; y: number; n: boolean; s: boolean; e: boolean; w: boolean }>): THREE.Mesh | null {
+  if (!tiles.length) return null;
+  const pos: number[] = [];
   const y = 0.02;
-  const quad = (x: number, z: number, w: number, d: number) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), mat(PALETTE.path));
-    m.position.set(x, y, z);
-    m.receiveShadow = true;
-    g.add(m);
+  const quad = (cx: number, cz: number, w: number, d: number) => {
+    const x0 = cx - w / 2;
+    const x1 = cx + w / 2;
+    const z0 = cz - d / 2;
+    const z1 = cz + d / 2;
+    pos.push(x0, y, z0, x0, y, z1, x1, y, z1, x0, y, z0, x1, y, z1, x1, y, z0);
   };
-  quad(0, 0, 0.7, 0.7);
-  if (links.n) quad(0, -0.425, 0.7, 0.15);
-  if (links.s) quad(0, 0.425, 0.7, 0.15);
-  if (links.e) quad(0.425, 0, 0.15, 0.7);
-  if (links.w) quad(-0.425, 0, 0.15, 0.7);
-  return g;
+  for (const t of tiles) {
+    const cx = t.x + 0.5;
+    const cz = t.y + 0.5;
+    quad(cx, cz, 0.7, 0.7);
+    if (t.n) quad(cx, cz - 0.425, 0.7, 0.15);
+    if (t.s) quad(cx, cz + 0.425, 0.7, 0.15);
+    if (t.e) quad(cx + 0.425, cz, 0.15, 0.7);
+    if (t.w) quad(cx - 0.425, cz, 0.15, 0.7);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const nrm = new Float32Array(pos.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  const mesh = new THREE.Mesh(geo, mat(PALETTE.path));
+  mesh.receiveShadow = true;
+  return mesh;
 }

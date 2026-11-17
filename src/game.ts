@@ -11,6 +11,7 @@ import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
+import { Sound } from './ui/sfx';
 import type { HighlightTone, RoomMark } from './render/worldView';
 
 type Tool =
@@ -21,6 +22,19 @@ type Tool =
   | { type: 'demolish' };
 
 const SAVE_KEY = 'irt.save.v1';
+const SETTINGS_KEY = 'irt.settings.v1';
+
+type Settings = { sound: boolean; reduceMotion: boolean };
+
+function loadSettings(): Settings {
+  const osReduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') as Partial<Settings>;
+    return { sound: s.sound ?? true, reduceMotion: s.reduceMotion ?? osReduce };
+  } catch {
+    return { sound: true, reduceMotion: osReduce };
+  }
+}
 /** Real seconds between autosaves while the clock runs. */
 const AUTOSAVE_SECONDS = 5;
 
@@ -38,12 +52,14 @@ interface Ptr {
   sy: number;
 }
 
+const GUEST_HINT = 'Drag a guest onto a room';
+
 const HINTS: Record<Tool['type'], string> = {
-  land: 'Tap a plot next to your island to buy it. Each plot costs more than the last.',
+  land: 'Tap a plot next to your island',
   none: '',
-  path: 'Drag from an existing path to draw. Paths must lead back to the dock.',
-  build: 'Drag to position, release to build. Must touch a path.',
-  demolish: 'Tap a building or path to remove it (50% refund).',
+  path: 'Draw from a path that reaches the dock',
+  build: 'Tap or drag next to a path',
+  demolish: 'Tap to remove (50% back)',
 };
 
 /**
@@ -69,7 +85,11 @@ export class Game {
   private tickAcc = 0;
   private sinceSave = 0;
   private gaveUpToast = 0;
-  private tab: Tab = 'build';
+  private tab: Tab = 'none';
+  private sfx = new Sound();
+  private settings = loadSettings();
+  private researchKey = '';
+  private saveWarned = false;
   /** The arrival card being placed (dragged, or tapped then a room tapped). */
   private selectedGuest: number | null = null;
   private cardDrag: { id: number; sx: number; sy: number; moved: boolean } | null = null;
@@ -104,6 +124,14 @@ export class Game {
     this.coinPops = new CoinPops(this.stage);
     this.hud = new Hud(hudRoot, {
       onTrayDown: (item, e) => this.onTrayDown(item, e),
+      onTraySelect: (item) => this.selectTrayItem(item),
+      onGoals: () => {
+        const open = !this.goals.isOpen;
+        if (open) this.setTab('none');
+        this.goals.toggle(open);
+      },
+      onToggleSound: () => this.applySettings({ ...this.settings, sound: !this.settings.sound }),
+      onToggleMotion: () => this.applySettings({ ...this.settings, reduceMotion: !this.settings.reduceMotion }),
       onRotate: () => this.rotate(),
       onDemolish: () => this.setTool(this.tool.type === 'demolish' ? { type: 'none' } : { type: 'demolish' }),
       onUndo: () => this.undo(),
@@ -142,7 +170,7 @@ export class Game {
       },
     });
     if (this.sim.night) this.report.show(this.sim.night);
-    this.goals = new GoalsView(hudRoot);
+    this.goals = new GoalsView(hudRoot, (open) => this.hud.setGoalsOpen(open));
     this.newGame = new NewGameDialog(hudRoot, (c) => this.startNewGame(c));
     this.certificate = document.createElement('div');
     this.certificate.className = 'report-backdrop';
@@ -164,8 +192,10 @@ export class Game {
     this.world.onChange(() => this.onWorldChange());
     this.onWorldChange();
     this.setTool({ type: 'none' });
+    this.setTab('none');
+    this.applySettings(this.settings);
     this.bindInput(canvas);
-    this.updateLocks();
+    this.refreshResearch(true);
     if (!simLoaded) {
       this.setSpeed(0);
       this.newGame.show(false);
@@ -203,8 +233,7 @@ export class Game {
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     this.hud.setRating(this.sim.rating);
     this.goals.update(performance.now());
-    this.hud.setResearch(this.sim.research.points, this.sim.researchNodes);
-    this.updateLocks();
+    this.refreshResearch();
     const queue = this.sim.queue;
     this.hud.setQueue(queue);
     this.followQueue(queue.length);
@@ -214,6 +243,7 @@ export class Game {
   private onSimEvent(e: SimEvent): void {
     switch (e.type) {
       case 'ferryArriving':
+        this.sfx.play('horn');
         return this.hud.toast('The morning ferry is coming in', 'info');
       case 'ferryDocked':
         if (e.guests === 0) return;
@@ -231,9 +261,11 @@ export class Game {
         const b = this.world.buildings.find((x) => x.id === e.buildingId);
         if (!b) return;
         const { w, h } = footprint(b.kind, b.rot);
+        this.sfx.play('coin');
         return this.coinPops.spawn(b.x + w / 2, b.y + h / 2, e.amount);
       }
       case 'checkedIn':
+        this.sfx.play('chime');
         if (this.selectedGuest === e.guestId) this.selectNextGuest();
         else if (this.selectedGuest !== null) this.showRoomMarks();
         return;
@@ -251,9 +283,38 @@ export class Game {
 
   private research(id: string): void {
     const r = this.sim.researchTopic(id);
-    if (!r.ok) return this.hud.toast(r.reason);
+    if (!r.ok) {
+      this.sfx.play('error');
+      return this.hud.toast(r.reason);
+    }
+    this.refreshResearch(true);
+    this.sfx.play('chime');
+    const node = this.sim.researchNodes.find((n) => n.node.id === id)?.node;
+    this.hud.celebrate('Research done', node ? `${node.name}: new buildings to build` : 'New buildings to build', false);
+  }
+
+  /** Research cards and build locks change only with points, rating or a finished topic. */
+  private refreshResearch(force = false): void {
+    const r = this.sim.research;
+    const key = `${r.points}|${this.sim.rating.toFixed(2)}|${this.sim.progression}|${this.sim.researchNodes.filter((n) => n.status.state === 'done').length}`;
+    if (!force && key === this.researchKey) return;
+    this.researchKey = key;
+    this.hud.setResearch(r.points, this.sim.researchNodes);
     this.updateLocks();
-    this.hud.toast('Research done: new buildings in the Build tab', 'good');
+  }
+
+  private applySettings(s: Settings): void {
+    this.settings = s;
+    this.sfx.enabled = s.sound;
+    document.documentElement.classList.toggle('reduce-motion', s.reduceMotion);
+    this.coinPops.reduceMotion = s.reduceMotion;
+    this.view.reduceMotion = s.reduceMotion;
+    this.hud.setSettings(s.sound, s.reduceMotion);
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+    } catch {
+      /* settings are a convenience */
+    }
   }
 
   private updateLocks(): void {
@@ -278,11 +339,13 @@ export class Game {
       if (this.tool.type !== 'none') this.setTool({ type: 'none' });
       const first = this.sim.queue[0];
       if (this.selectedGuest === null && first) this.selectGuest(first.id);
-      this.hud.setHint(this.sim.queue.length ? 'Drag a guest onto a room, or tap a guest and then a room.' : '');
+      this.hud.setHint(this.sim.queue.length ? GUEST_HINT : '');
     } else {
       this.selectGuest(null);
       this.hud.setHint(HINTS[this.tool.type]);
     }
+    if (tab !== 'none') this.goals.toggle(false);
+    if (tab !== 'build' && tab !== 'none' && this.tool.type !== 'none') this.setTool({ type: 'none' });
   }
 
   selectGuest(id: number | null): void {
@@ -301,7 +364,7 @@ export class Game {
     if (sel !== null && !this.sim.queue.some((g) => g.id === sel)) return this.selectNextGuest();
     if (sel === null && waiting > 0) {
       this.selectGuest(this.sim.queue[0].id);
-      this.hud.setHint('Drag a guest onto a room, or tap a guest and then a room.');
+      this.hud.setHint(GUEST_HINT);
     }
   }
 
@@ -310,7 +373,7 @@ export class Game {
     const next = this.sim.queue[0];
     if (next) return this.selectGuest(next.id);
     this.selectGuest(null);
-    if (this.tab === 'guests') this.setTab('build');
+    if (this.tab === 'guests') this.setTab('none');
   }
 
   private markTone(score: number): HighlightTone {
@@ -376,7 +439,10 @@ export class Game {
 
   private tryCheckIn(guestId: number, roomId: number): void {
     const r = this.sim.checkIn(guestId, roomId);
-    if (!r.ok) return this.hud.toast(r.reason);
+    if (!r.ok) {
+      this.sfx.play('error');
+      return this.hud.toast(r.reason);
+    }
     const verdict = r.score >= 70 ? 'Great match' : r.score >= 45 ? 'Checked in' : 'Poor match';
     this.hud.toast(`${verdict} · ${r.score}`, r.score >= 45 ? 'good' : 'bad');
   }
@@ -436,7 +502,7 @@ export class Game {
     this.sim.progression = !!scenario;
     this.sim.startScenario(scenario ? scenario.id : null);
     this.attachCampaign();
-    this.updateLocks();
+    this.refreshResearch(true);
     this.report.hide();
     this.certificate.hidden = true;
     this.history.clear();
@@ -451,15 +517,19 @@ export class Game {
   private attachCampaign(): void {
     const c = this.sim.campaign;
     this.goals.setCampaign(c);
+    this.hud.setGoalsAvailable(!!c);
     if (!c) return;
     c.on((e) => {
       switch (e.type) {
         case 'objectiveDone': {
           const r = e.objective.reward;
+          this.sfx.play('chime');
+          if (r.coins) this.hud.bump('coins');
           return this.hud.toast(`Goal done: ${e.objective.label} · ${r.coins ? `+${r.coins} coins` : `+${r.research} research`}`, 'good');
         }
         case 'medal':
-          return this.hud.toast(`${MEDAL_NAMES[e.tier]} medal won!`, 'good');
+          this.sfx.play('fanfare');
+          return this.hud.celebrate(`${MEDAL_NAMES[e.tier]} medal!`, c.def.name, !this.settings.reduceMotion);
         case 'finished':
           this.certificate.innerHTML = certificateHtml(c);
           this.certificate.hidden = false;
@@ -490,7 +560,11 @@ export class Game {
 
   private save(): void {
     this.sinceSave = 0;
-    writeSave({ world: this.world.snapshot(), sim: this.sim.snapshot() });
+    const ok = writeSave({ world: this.world.snapshot(), sim: this.sim.snapshot() });
+    if (!ok && !this.saveWarned) {
+      this.saveWarned = true;
+      this.hud.toast("Can't save on this device (storage full or private mode): progress will be lost on reload", 'info');
+    }
   }
 
   // ---------- previews ----------
@@ -542,13 +616,23 @@ export class Game {
     const a = this.buildAnchor(t);
     const { kind, rot } = this.tool;
     const r = this.history.run(() => this.world.placeBuilding(kind, a.x, a.y, rot));
-    if (!r.ok) this.hud.toast(r.reason);
+    if (!r.ok) {
+      this.sfx.play('error');
+      this.hud.toast(r.reason);
+    } else {
+      const { w, h } = footprint(kind, rot);
+      this.sfx.play('place');
+      this.coinPops.spawn(a.x + w / 2, a.y + h / 2, -BUILDINGS[kind].cost);
+    }
     this.previewBuild(t);
   }
 
   private tryDemolish(t: Tile): void {
     const r = this.history.run(() => this.world.demolishAt(t.x, t.y));
-    if (!r.ok) this.hud.toast(r.reason);
+    if (!r.ok) {
+      this.sfx.play('error');
+      this.hud.toast(r.reason);
+    } else this.sfx.play('tap');
     this.previewHover(t);
   }
 
@@ -570,7 +654,10 @@ export class Game {
 
   private endStroke(): void {
     if (!this.stroke) return;
-    if (this.stroke.placed === 0 && this.stroke.firstError) this.hud.toast(this.stroke.firstError);
+    if (this.stroke.placed === 0 && this.stroke.firstError) {
+      this.sfx.play('error');
+      this.hud.toast(this.stroke.firstError);
+    } else if (this.stroke.placed > 0) this.sfx.play('place');
     this.history.commit();
     this.stroke = null;
     this.onWorldChange();
@@ -596,18 +683,25 @@ export class Game {
   // ---------- input ----------
 
   private onTrayDown(item: TrayItem, e: PointerEvent): void {
+    if (this.selectTrayItem(item)) this.trayDrag = { item, sx: e.clientX, sy: e.clientY, moved: false };
+  }
+
+  /** Pick a build card's tool (tap, keyboard, or the start of a drag). */
+  private selectTrayItem(item: TrayItem): boolean {
     const locked = this.hud.lockReason(item);
     if (locked) {
+      this.sfx.play('error');
       this.hud.toast(`${locked} (Research tab)`);
-      return;
+      return false;
     }
+    this.sfx.play('tap');
     if (item === 'path') this.setTool({ type: 'path' });
     else if (item === 'land') this.setTool(this.tool.type === 'land' ? { type: 'none' } : { type: 'land' });
     else {
       const rot = this.tool.type === 'build' && this.tool.kind === item ? this.tool.rot : 0;
       this.setTool({ type: 'build', kind: item, rot });
     }
-    this.trayDrag = { item, sx: e.clientX, sy: e.clientY, moved: false };
+    return true;
   }
 
   private bindInput(canvas: HTMLCanvasElement): void {
@@ -672,7 +766,7 @@ export class Game {
           if (this.panel.open) return this.panel.close();
           return this.setTool({ type: 'none' });
         case 'g':
-          return this.setTab(this.tab === 'guests' ? 'build' : 'guests');
+          return this.setTab(this.tab === 'guests' ? 'none' : 'guests');
         case 'l':
           return this.setTool({ type: 'land' });
         case 'r':
@@ -813,7 +907,11 @@ export class Game {
     if (!plot) return;
     const price = this.world.plotPrice;
     const r = this.history.run(() => this.world.buyPlot(plot.id));
-    if (!r.ok) return this.hud.toast(r.reason);
+    if (!r.ok) {
+      this.sfx.play('error');
+      return this.hud.toast(r.reason);
+    }
+    this.sfx.play('fanfare');
     this.hud.toast(`New land! ${price.toLocaleString('en-US')} coins`, 'good');
   }
 }
@@ -833,10 +931,11 @@ function loadSave(): { save: SaveFile | null; discarded: boolean } {
   }
 }
 
-function writeSave(s: SaveFile): void {
+function writeSave(s: SaveFile): boolean {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
+    return true;
   } catch {
-    /* storage unavailable (private mode): the island just won't persist */
+    return false; // storage full or unavailable (private mode)
   }
 }

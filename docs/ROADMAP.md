@@ -22,7 +22,7 @@ are deliberately left rough.
 | M5 | Economy, night report and reviews | **Done** |
 | Pass 1 | Depth and scenarios | **Done** |
 | Pass 2 | Balance | **Done** |
-| Pass 3 | Graphics, visuals and GUI | Planned |
+| Pass 3 | Graphics, visuals and GUI | **First cut done** (Lagoon Glass) |
 
 ---
 
@@ -155,5 +155,26 @@ targets and the targets became tests (`tests/balance.test.ts`). Details and resu
 
 ## Pass 3 — Graphics, visuals and GUI
 
-Art, animation, day and night lighting, UI layout on phones, onboarding hints, PWA install and
-a performance pass on low-end phones.
+Audited against the game-dev skills in `.claude/skills/` ([AUDIT.md](AUDIT.md)); the chosen
+direction is **Lagoon Glass**.
+
+Done in the first cut:
+
+- New HUD: glass chips (coins, rating, clock with a speed chip, menu), a five-icon dock (Build,
+  Guests, play/pause, Research, Goals) and one sheet above it. Build cards are grouped into
+  five categories and show only an icon and a price; details sit behind ⓘ or a long-press.
+- Readability: 12 px text floor, 44 px tap targets, contrast-checked colours (including the
+  check-in score bubbles), Outfit and Nunito Sans, focus rings and keyboard-usable cards.
+- Feel: buildings pop in with a dust ring and a red "−cost" number; medals get a banner with
+  confetti; research gets a banner; rating, coins, research and the guest queue pulse.
+- Sound: synthesized effects for coins, building, the ferry horn, check-in, errors and fanfares,
+  with a mute in the menu.
+- Reduce motion: follows the OS setting, can be toggled in the menu.
+- Performance: buildings are merged per material and paths are one mesh (599 → 327 draw calls
+  for 17 buildings); only changed buildings are rebuilt; pixel ratio 1.5 on touch screens;
+  `PCFShadowMap`; research and lock updates only when something changed.
+- A one-time notice when the game can't save.
+
+Still to do: day and night lighting, onboarding (a guided first day), a screen stack for
+overlays, save migrations, merging all buildings into a single static layer, PWA install and
+numbers from a real mid-range phone.

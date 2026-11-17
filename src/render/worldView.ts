@@ -1,12 +1,21 @@
 import * as THREE from 'three';
 import { footprint, type BuildingKind, type Rotation } from '../sim/buildings';
 import type { Tile, World } from '../sim/world';
-import { PALETTE, buildingModel, mat, palm, pathTile, stackedModel } from './models';
+import { PALETTE, buildingModel, mat, mergeByMaterial, palm, pathMesh, stackedModel } from './models';
 import type { Stage } from './stage';
 
 export type HighlightTone = 'ok' | 'warn' | 'bad' | 'info';
 
 const TONES: Record<HighlightTone, string> = { ok: '#4fe07a', warn: '#ffc93c', bad: '#ff5a4f', info: '#ffffff' };
+/** Bubble fills and text: dark ink on light fills, white only on the deep red (all 4.5:1 or better). */
+const BUBBLES: Record<HighlightTone, { fill: string; ink: string }> = {
+  ok: { fill: '#8ff0b0', ink: '#10323b' },
+  warn: { fill: '#ffd666', ink: '#10323b' },
+  bad: { fill: '#b3301d', ink: '#ffffff' },
+  info: { fill: '#ffffff', ink: '#10323b' },
+};
+const POP_TIME = 0.42;
+const DUST_TIME = 0.6;
 
 /** One room's check-in preview: a plate around the footprint and a score bubble above the roof. */
 export interface RoomMark {
@@ -39,6 +48,15 @@ export class WorldView {
   private landKey = '';
   /** Plots rising out of the sea after purchase: id → seconds since bought. */
   private rising = new Map<number, number>();
+  /** Placed buildings, merged per material and keyed by what they look like. */
+  private models = new Map<number, { key: string; obj: THREE.Group }>();
+  private pathKey = '';
+  private popping = new Map<THREE.Group, number>();
+  private dust: Array<{ mesh: THREE.Mesh; t: number }> = [];
+  private dustGeo = new THREE.RingGeometry(0.55, 0.8, 24).rotateX(-Math.PI / 2);
+  private synced = false;
+  /** Skip the placement pop and dust. */
+  reduceMotion = false;
   private ghostMats: Record<'ok' | 'bad', THREE.MeshBasicMaterial> = {
     ok: new THREE.MeshBasicMaterial({ color: TONES.ok, transparent: true, opacity: 0.55, depthWrite: false }),
     bad: new THREE.MeshBasicMaterial({ color: TONES.bad, transparent: true, opacity: 0.55, depthWrite: false }),
@@ -96,7 +114,8 @@ export class WorldView {
 
   /** Per frame: plots rising from the sea. Returns true while animating. */
   update(dt: number): boolean {
-    if (!this.rising.size) return false;
+    const effects = this.updateEffects(dt);
+    if (!this.rising.size) return effects;
     for (const [id, t0] of this.rising) {
       const t = Math.min(1, t0 + dt / 0.9);
       const g = this.plotGroups.get(id);
@@ -105,6 +124,47 @@ export class WorldView {
       else this.rising.set(id, t);
     }
     return true;
+  }
+
+  /** Placement feedback: an ease-out-back scale pop and a ring of dust. */
+  private updateEffects(dt: number): boolean {
+    if (!this.popping.size && !this.dust.length) return false;
+    for (const [obj, t0] of this.popping) {
+      const t = Math.min(1, t0 + dt / POP_TIME);
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      const e = 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2;
+      const sxz = 0.6 + 0.4 * e;
+      obj.scale.set(sxz, 0.3 + 0.7 * e, sxz);
+      if (t >= 1) {
+        obj.scale.set(1, 1, 1);
+        this.popping.delete(obj);
+      } else this.popping.set(obj, t);
+    }
+    for (const d of [...this.dust]) {
+      d.t += dt / DUST_TIME;
+      const k = Math.min(1, d.t);
+      d.mesh.scale.setScalar(d.mesh.userData.size * (0.6 + 0.8 * (1 - (1 - k) ** 2)));
+      (d.mesh.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - k);
+      if (k >= 1) {
+        this.stage.scene.remove(d.mesh);
+        (d.mesh.material as THREE.Material).dispose();
+        this.dust.splice(this.dust.indexOf(d), 1);
+      }
+    }
+    return true;
+  }
+
+  private placeEffect(obj: THREE.Group, w: number, h: number): void {
+    if (this.reduceMotion) return;
+    obj.scale.set(0.6, 0.3, 0.6);
+    this.popping.set(obj, 0);
+    const ring = new THREE.Mesh(this.dustGeo, new THREE.MeshBasicMaterial({ color: '#fff3d6', transparent: true, opacity: 0.7, depthWrite: false }));
+    ring.userData.size = Math.max(w, h) * 0.75;
+    ring.position.set(obj.position.x, 0.05, obj.position.z);
+    ring.renderOrder = 5;
+    this.stage.scene.add(ring);
+    this.dust.push({ mesh: ring, t: 0 });
   }
 
   // ---------- scenery ----------
@@ -234,7 +294,7 @@ export class WorldView {
         plane.position.set(p.x + p.w / 2, -0.36, p.y + p.h / 2);
         plane.renderOrder = 2;
         this.forSaleGroup.add(plane);
-        const label = labelSprite(price, TONES[tone]);
+        const label = labelSprite(price, tone);
         label.position.set(p.x + p.w / 2, 0.2, p.y + p.h / 2);
         this.forSaleGroup.add(label);
       }
@@ -247,22 +307,54 @@ export class WorldView {
   private sync(): void {
     this.syncTerrain(true);
     if (this.landMode) this.syncForSale();
-    clear(this.pathsGroup);
-    clear(this.buildingsGroup);
     const w = this.world;
-    for (const t of w.pathTiles()) {
-      const p = pathTile({
-        n: w.isPath(t.x, t.y - 1),
-        s: w.isPath(t.x, t.y + 1) || (t.x === w.dock.x && t.y === w.dock.y),
-        e: w.isPath(t.x + 1, t.y),
-        w: w.isPath(t.x - 1, t.y),
-      });
-      p.position.set(t.x + 0.5, 0, t.y + 0.5);
-      this.pathsGroup.add(p);
+    // Paths: one mesh for the whole network, rebuilt only when the tiles change.
+    const tiles = w.pathTiles();
+    const pathKey = tiles.map((t) => `${t.x},${t.y}`).join(';');
+    if (pathKey !== this.pathKey) {
+      this.pathKey = pathKey;
+      clear(this.pathsGroup);
+      const mesh = pathMesh(
+        tiles.map((t) => ({
+          x: t.x,
+          y: t.y,
+          n: w.isPath(t.x, t.y - 1),
+          s: w.isPath(t.x, t.y + 1) || (t.x === w.dock.x && t.y === w.dock.y),
+          e: w.isPath(t.x + 1, t.y),
+          w: w.isPath(t.x - 1, t.y),
+        })),
+      );
+      if (mesh) this.pathsGroup.add(mesh);
     }
-    for (const b of w.buildings)
-      this.buildingsGroup.add(placeModel(stackedModel(b.kind, b.floors ?? 1, !!b.elevator), b.kind, b.x, b.y, b.rot));
+    // Buildings: keep unchanged models, rebuild changed ones, pop the new ones.
+    const seen = new Set<number>();
+    const fresh: Array<{ obj: THREE.Group; w: number; h: number }> = [];
+    for (const b of w.buildings) {
+      seen.add(b.id);
+      const key = `${b.kind}|${b.x}|${b.y}|${b.rot}|${b.floors ?? 1}|${b.elevator ? 1 : 0}`;
+      const have = this.models.get(b.id);
+      if (have && have.key === key) continue;
+      if (have) this.dropModel(b.id);
+      const obj = placeModel(mergeByMaterial(stackedModel(b.kind, b.floors ?? 1, !!b.elevator)), b.kind, b.x, b.y, b.rot);
+      this.buildingsGroup.add(obj);
+      this.models.set(b.id, { key, obj });
+      const fp = footprint(b.kind, b.rot);
+      if (!have) fresh.push({ obj, w: fp.w, h: fp.h });
+    }
+    for (const id of [...this.models.keys()]) if (!seen.has(id)) this.dropModel(id);
+    // Pop only what the player just placed (not a load or a new island).
+    if (this.synced && fresh.length <= 2) for (const f of fresh) this.placeEffect(f.obj, f.w, f.h);
+    this.synced = true;
     this.stage.requestRender();
+  }
+
+  private dropModel(id: number): void {
+    const m = this.models.get(id);
+    if (!m) return;
+    this.buildingsGroup.remove(m.obj);
+    this.popping.delete(m.obj);
+    disposeTree(m.obj);
+    this.models.delete(id);
   }
 
   /** Translucent preview of a building at a spot, tinted by whether it can go there. */
@@ -300,7 +392,7 @@ export class WorldView {
       plate.position.set(x0 + w / 2, 0.04, y0 + h / 2);
       plate.renderOrder = 2;
       this.marksGroup.add(plate);
-      const sprite = labelSprite(mk.label, TONES[mk.tone]);
+      const sprite = labelSprite(mk.label, mk.tone);
       sprite.position.set(x0 + w / 2, 2.0 + ((mk.floors ?? 1) - 1) * 0.62, y0 + h / 2);
       this.marksGroup.add(sprite);
       this.marks.set(mk.id, sprite);
@@ -361,7 +453,8 @@ function clear(g: THREE.Group): void {
 }
 
 /** A rounded speech-bubble label drawn on a canvas, always facing the camera. */
-function labelSprite(text: string, color: string): THREE.Sprite {
+function labelSprite(text: string, tone: HighlightTone): THREE.Sprite {
+  const { fill: color, ink } = BUBBLES[tone];
   const scale = 4;
   const c = document.createElement('canvas');
   const ctx = c.getContext('2d')!;
@@ -385,7 +478,7 @@ function labelSprite(text: string, color: string): THREE.Sprite {
   ctx.lineTo(c.width / 2 + 6 * scale, bh - 1);
   ctx.lineTo(c.width / 2, bh + 7 * scale);
   ctx.fill();
-  ctx.fillStyle = color === TONES.warn || color === TONES.info ? '#23404a' : '#ffffff';
+  ctx.fillStyle = ink;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, c.width / 2, bh / 2 + scale);
