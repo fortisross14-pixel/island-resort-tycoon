@@ -10,6 +10,7 @@ const SHIRTS: Record<Guest['type'], string[]> = {
   wellness: ['#ffffff', '#c9f0e4', '#e8e0ff'],
   party: ['#ff3fa4', '#9b5cff', '#00d1c1', '#ffe14d'],
   vip: ['#222831', '#f2b441', '#ffffff'],
+  business: ['#34495e', '#5d6d7e', '#ffffff'],
 };
 
 /** Where each member of a party walks, relative to the first, in tiles. */

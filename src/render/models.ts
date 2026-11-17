@@ -409,7 +409,126 @@ function nightclub(): THREE.Group {
   return g;
 }
 
+function suites(): THREE.Group {
+  // 3×3 luxury block with a rooftop terrace and a private pool.
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.08, 2.85, '#efe6d6'));
+  g.add(box(2.2, 1.0, 1.5, '#fdfaf3', 0, 0.08, -0.55));
+  g.add(box(2.35, 0.08, 1.65, '#c9a227', 0, 1.08, -0.55));
+  g.add(box(1.2, 0.35, 0.9, '#fdfaf3', -0.4, 1.16, -0.75));
+  g.add(box(1.3, 0.06, 1.0, '#c9a227', -0.4, 1.51, -0.75));
+  for (const sx of [-0.7, 0, 0.7]) {
+    g.add(windowPane(sx, 0.6, 0.201, 0.45, 0.45));
+    g.add(box(0.5, 0.04, 0.2, PALETTE.white, sx, 0.4, 0.3));
+  }
+  const water = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.7), new THREE.MeshLambertMaterial({ color: '#4fc6e8' }));
+  water.position.set(0.2, 0.1, 0.85);
+  g.add(water);
+  g.add(palmPot(-1.15, 0.85));
+  return g;
+}
+
+function fineDining(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.08, 2.85, '#e9e2d4'));
+  g.add(box(2.3, 1.0, 1.6, '#2c2c34', 0, 0.08, -0.5));
+  g.add(box(2.45, 0.08, 1.75, '#c9a227', 0, 1.08, -0.5));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.6), mat('#f6d98b'));
+  glass.position.set(0, 0.5, 0.301);
+  g.add(glass);
+  for (const x of [-0.8, 0, 0.8]) {
+    g.add(box(0.34, 0.24, 0.34, PALETTE.white, x, 0.08, 0.95));
+    g.add(box(0.04, 0.12, 0.04, '#c9a227', x, 0.32, 0.95));
+  }
+  return g;
+}
+
+function movieTheater(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.08, 2.85, '#d9d2c4'));
+  g.add(box(2.4, 1.3, 2.0, '#7d3c98', 0, 0.08, -0.3));
+  g.add(box(1.8, 0.45, 0.08, '#f2b441', 0, 0.95, 0.72));
+  for (let i = 0; i < 6; i++) g.add(box(0.12, 0.12, 0.05, i % 2 ? '#ffffff' : '#ff6b6b', -0.75 + i * 0.3, 1.18, 0.77));
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.55), mat('#2a1a33'));
+  door.position.set(0, 0.36, 0.701);
+  g.add(door);
+  return g;
+}
+
+function conferenceHall(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(3.85, 0.08, 2.85, '#dfe6ea'));
+  g.add(box(3.3, 1.1, 2.0, '#eef3f7', 0, 0.08, -0.3));
+  g.add(box(3.45, 0.1, 2.15, '#34495e', 0, 1.18, -0.3));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.7), mat(PALETTE.window));
+  glass.position.set(0, 0.6, 0.701);
+  g.add(glass);
+  for (const x of [-1.2, -0.4, 0.4, 1.2]) g.add(box(0.06, 0.6, 0.06, '#bdc3c7', x, 0.08, 1.15));
+  g.add(box(2.5, 0.04, 0.04, '#bdc3c7', 0, 0.68, 1.15));
+  return g;
+}
+
+function waterVillas(): THREE.Group {
+  // Two thatched villas on a deck.
+  const g = new THREE.Group();
+  g.add(box(1.9, 0.08, 1.9, PALETTE.wood));
+  for (const sx of [-0.45, 0.45]) {
+    g.add(box(0.75, 0.55, 0.9, '#f5ead6', sx, 0.08, -0.2));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.5, 4), mat('#d9b46a'));
+    roof.rotation.y = Math.PI / 4;
+    roof.position.set(sx, 0.88, -0.2);
+    roof.castShadow = true;
+    g.add(roof);
+    const pool = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.3), new THREE.MeshLambertMaterial({ color: '#4fc6e8' }));
+    pool.position.set(sx, 0.1, 0.55);
+    g.add(pool);
+  }
+  return g;
+}
+
+function helipad(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.1, 2.85, '#5d6d7e'));
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.0, 24).rotateX(-Math.PI / 2), mat('#f2b441'));
+  ring.position.y = 0.11;
+  g.add(ring);
+  g.add(box(0.15, 0.02, 0.9, PALETTE.white, -0.25, 0.1, 0));
+  g.add(box(0.15, 0.02, 0.9, PALETTE.white, 0.25, 0.1, 0));
+  g.add(box(0.5, 0.02, 0.15, PALETTE.white, 0, 0.1, 0));
+  for (const [x, z] of [
+    [-1.3, -1.3],
+    [1.3, -1.3],
+    [-1.3, 1.3],
+    [1.3, 1.3],
+  ])
+    g.add(box(0.1, 0.12, 0.1, '#ff4d4d', x, 0.1, z));
+  return g;
+}
+
+function marina(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(3.85, 0.06, 1.85, PALETTE.wood));
+  for (const x of [-1.2, 0, 1.2]) {
+    g.add(box(0.15, 0.06, 0.9, PALETTE.woodDark, x, 0.06, 0.4));
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.22, 0.9), mat(PALETTE.white));
+    hull.position.set(x + 0.35, 0.15, 0.45);
+    hull.castShadow = true;
+    g.add(hull);
+    g.add(box(0.03, 0.7, 0.03, '#999999', x + 0.35, 0.25, 0.45));
+  }
+  g.add(box(1.0, 0.6, 0.6, '#2e86c1', -1.2, 0.06, -0.5));
+  g.add(box(1.1, 0.06, 0.7, PALETTE.white, -1.2, 0.66, -0.5));
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  suites,
+  fineDining,
+  movieTheater,
+  conferenceHall,
+  waterVillas,
+  helipad,
+  marina,
   kidsClub,
   nightclub,
   researchOffice,

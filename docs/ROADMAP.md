@@ -136,7 +136,16 @@ More to build and more reasons to build it. The full building plan is in
 5. ✅ **More guest types.** Families (★2, parties of 3–4), Wellness seekers (★3), Party groups (★3, out late) and VIPs (★4, hate crowds), each with loves and dislikes; Kids' Club (tier 2, per child) and Nightclub (tier 3, keeps neighbours awake). Fixed a long-standing bug where guests who went to bed before 23:00 slept through the next day.
 6. ✅ **Stacked floors.** Room buildings get floors from their panel (2 rooms each, 60% of the price, upkeep per floor): 3 at first, 6 after the Tall Buildings research. Above 3 floors guests mind the stairs (−15 match) until a 2,000 Elevator goes in. Demolishing refunds half of everything spent.
 
-Pass 1 is done. Left for later depth: tier 3–4 content (Suites, Water Villas, Fine Dining, Movie Theater, Conference Hall, Helipad, Marina), scenarios 2–8, rival resorts and rankings, staff, decoration and utilities, special plot types (beach, cliff, jungle).
+Pass 1 is done.
+
+### Expansion (after Pass 2) ✅
+
+- Tier 3: Suites (luxury rooms), Fine Dining, Movie Theater, Conference Hall (brings Business guests).
+- Tier 4 (two tier-3 topics, ★4+): Water Villas (shore-only for now), Helipad (triples VIP arrivals), Marina.
+- Business guest type: impatient, minds a slow check-in without a Front Desk, holds events at the Conference Hall.
+- Scenario 2, **Family Cove**: families dominate the ferry; medals for families hosted, a Kids' Club, a Pool, rating and profit.
+
+Still for later: scenarios 3–8, rival resorts and rankings, staff, decoration and utilities, special plot types (beach, cliff, jungle), building over water.
 
 ## Pass 2 — Balance ✅
 

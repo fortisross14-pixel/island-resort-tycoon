@@ -22,6 +22,8 @@ export interface HudHandlers {
 export type Tab = 'build' | 'guests' | 'research';
 
 const WISH_ICONS: Record<Wish, string> = {
+  conference: '<svg viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="8" fill="#34495e"/><rect x="4" y="6" width="8" height="4" fill="#9fd8ee"/></svg>',
+  fineDining: '<svg viewBox="0 0 16 16"><circle cx="8" cy="9" r="5" fill="#fff" stroke="#c9a227" stroke-width="1.5"/><rect x="2" y="3" width="1" height="10" fill="#666"/><rect x="13" y="3" width="1" height="10" fill="#666"/></svg>',
   kidsClub: '<svg viewBox="0 0 16 16"><path d="M3 13 L9 3 L11 3 L5 13 Z" fill="#7bc96f"/><circle cx="12" cy="10" r="3" fill="#ff6b6b"/></svg>',
   spa: '<svg viewBox="0 0 16 16"><path d="M8 2 q-5 6 0 12 q5 -6 0 -12 Z" fill="#5fb3a5"/></svg>',
   gym: '<svg viewBox="0 0 16 16"><rect x="4" y="7" width="8" height="2" fill="#ff6b6b"/><rect x="2" y="5" width="3" height="6" fill="#ff6b6b"/><rect x="11" y="5" width="3" height="6" fill="#ff6b6b"/></svg>',
@@ -41,6 +43,7 @@ const ICON_SHIRTS: Record<string, string[]> = {
   wellness: ['#c9f0e4'],
   party: ['#ff3fa4', '#9b5cff', '#00d1c1'],
   vip: ['#222831', '#f2b441'],
+  business: ['#34495e'],
 };
 
 function peopleIcon(g: Guest): string {
@@ -59,6 +62,13 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  suites: '<svg viewBox="0 0 32 32"><rect x="5" y="9" width="22" height="18" fill="#fdfaf3"/><rect x="4" y="7" width="24" height="3" fill="#c9a227"/><rect x="8" y="13" width="5" height="5" fill="#3b6e8f"/><rect x="19" y="13" width="5" height="5" fill="#3b6e8f"/><path d="M14 4 l2 -2 l2 2 l-2 2 Z" fill="#c9a227"/></svg>',
+  fineDining: '<svg viewBox="0 0 32 32"><rect x="5" y="10" width="22" height="16" fill="#2c2c34"/><rect x="4" y="8" width="24" height="3" fill="#c9a227"/><rect x="8" y="14" width="16" height="6" fill="#f6d98b"/></svg>',
+  movieTheater: '<svg viewBox="0 0 32 32"><rect x="4" y="8" width="24" height="19" fill="#7d3c98"/><rect x="7" y="11" width="18" height="6" fill="#f2b441"/><rect x="12" y="20" width="8" height="7" fill="#2a1a33"/></svg>',
+  conferenceHall: '<svg viewBox="0 0 32 32"><rect x="3" y="10" width="26" height="16" fill="#eef3f7"/><rect x="2" y="8" width="28" height="3" fill="#34495e"/><rect x="6" y="14" width="20" height="6" fill="#3b6e8f"/></svg>',
+  waterVillas: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><rect x="4" y="19" width="24" height="3" fill="#a8754a"/><path d="M5 13 L10 7 L15 13 Z" fill="#d9b46a"/><rect x="6" y="13" width="8" height="6" fill="#f5ead6"/><path d="M17 13 L22 7 L27 13 Z" fill="#d9b46a"/><rect x="18" y="13" width="8" height="6" fill="#f5ead6"/></svg>',
+  helipad: '<svg viewBox="0 0 32 32"><rect x="3" y="3" width="26" height="26" rx="3" fill="#5d6d7e"/><circle cx="16" cy="16" r="9" fill="none" stroke="#f2b441" stroke-width="2"/><path d="M12 10 V22 M20 10 V22 M12 16 H20" stroke="#fff" stroke-width="2.5"/></svg>',
+  marina: '<svg viewBox="0 0 32 32"><rect x="2" y="20" width="28" height="8" fill="#6fd6d6"/><rect x="2" y="17" width="28" height="3" fill="#a8754a"/><path d="M8 17 L14 17 L13 21 L9 21 Z" fill="#fff"/><path d="M18 17 L26 17 L25 21 L19 21 Z" fill="#fff"/><rect x="21.5" y="6" width="1" height="11" fill="#999"/><path d="M22.5 7 L28 14 L22.5 14 Z" fill="#fff"/></svg>',
   kidsClub: '<svg viewBox="0 0 32 32"><rect x="4" y="12" width="16" height="14" fill="#ffd166"/><path d="M3 12 L12 5 L21 12 Z" fill="#4fb0e8"/><path d="M22 26 L28 14 L30 14 L24 26 Z" fill="#7bc96f"/><circle cx="12" cy="20" r="3" fill="#ff6b6b"/></svg>',
   nightclub: '<svg viewBox="0 0 32 32"><rect x="4" y="9" width="24" height="18" fill="#2a2d38"/><rect x="4" y="7" width="24" height="3" fill="#ff3fa4"/><rect x="9" y="13" width="14" height="3" fill="#9b5cff"/><rect x="13" y="19" width="6" height="8" fill="#111"/></svg>',
   researchOffice: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#eef3f7"/><rect x="5" y="10" width="22" height="3" fill="#6b7fd6"/><path d="M19 9 a5 5 0 0 1 8 -4" stroke="#999" stroke-width="2" fill="none"/><rect x="9" y="16" width="5" height="4" fill="#3b6e8f"/><rect x="18" y="16" width="5" height="4" fill="#3b6e8f"/></svg>',

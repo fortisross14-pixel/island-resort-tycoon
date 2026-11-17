@@ -67,7 +67,7 @@ export class GoalsView {
       const won = c.state.medals[t];
       const goals = c.def.medals[t]
         .map((g) => {
-          const v = c.metric(g.metric);
+          const v = c.progress(g);
           const ok = v >= g.target;
           return `<li class="${ok ? 'ok' : ''}"><span>${ok ? '✓' : '○'} ${g.label}</span><em>${fmt(Math.min(v, g.target), g.metric)} / ${fmt(g.target, g.metric)}</em></li>`;
         })

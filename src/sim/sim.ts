@@ -57,7 +57,7 @@ export const PATIENCE_SECONDS = 2 * SECONDS_PER_GAME_HOUR;
 /** Timer value meaning "inside until morning". */
 const OVERNIGHT = 1e9;
 
-export type GuestType = 'backpacker' | 'couple' | 'family' | 'wellness' | 'party' | 'vip';
+export type GuestType = 'backpacker' | 'couple' | 'family' | 'wellness' | 'party' | 'vip' | 'business';
 
 export interface GuestTypeDef {
   name: string;
@@ -85,6 +85,10 @@ export interface GuestTypeDef {
   walkShy?: boolean;
   /** A busy venue spoils it for them (VIPs). */
   hatesCrowds?: boolean;
+  /** Only arrives when this building exists (business guests need a Conference Hall). */
+  needs?: BuildingKind;
+  /** Impatient: waits half as long and minds a slow check-in (business guests). */
+  impatient?: boolean;
 }
 
 export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
@@ -171,9 +175,25 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     wishCount: [1, 2],
     minStars: 4,
     weight: 0.12,
-    likes: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant', 'spa', 'boutique'],
+    likes: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant', 'spa', 'boutique', 'fineDining', 'marina'],
     dislikes: ['snackBar', 'buffet'],
     hatesCrowds: true,
+  },
+  business: {
+    name: 'Business guest',
+    size: [1, 1],
+    nights: [1, 2],
+    budget: [150, 230],
+    spend: [140, 220],
+    tier: 3,
+    wishPool: ['conference', 'shortWalk', 'gym'],
+    wishCount: [1, 2],
+    minStars: 3,
+    weight: 0.3,
+    likes: ['conferenceHall', 'fineDining', 'gym'],
+    dislikes: ['kidsClub', 'nightclub'],
+    needs: 'conferenceHall',
+    impatient: true,
   },
 };
 
@@ -907,7 +927,7 @@ export class Sim {
       budget: Math.round(this.rng.range(...def.budget) / 5) * 5,
       tier: def.tier,
       wishes,
-      patience: PATIENCE_SECONDS * (this.hasFrontDesk ? 1.5 : 1),
+      patience: PATIENCE_SECONDS * (this.hasFrontDesk ? 1.5 : 1) * (def.impatient ? 0.5 : 1),
       satisfaction: 50,
       roomScore: 50,
       needs: {
@@ -950,12 +970,16 @@ export class Sim {
   private pickGuestType(): GuestType {
     const stars = this.rating;
     const share = coupleShare(stars);
+    const bias = this.campaign?.def.guestBias ?? {};
+    const helipad = this.world.buildings.some((b) => b.kind === 'helipad');
     const weights = GUEST_TYPE_KEYS.map((t) => {
       const d = GUEST_TYPES[t];
       if (stars < d.minStars) return 0;
-      if (t === 'backpacker') return 1 - share;
-      if (t === 'couple') return share;
-      return d.weight;
+      if (d.needs && !this.world.buildings.some((b) => b.kind === d.needs)) return 0;
+      let wgt = t === 'backpacker' ? 1 - share : t === 'couple' ? share : d.weight;
+      // A Helipad flies VIPs in (GDD).
+      if (t === 'vip' && helipad) wgt *= 3;
+      return wgt * (bias[t] ?? 1);
     });
     let r = this.rng.next() * weights.reduce((a, b) => a + b, 0);
     for (let i = 0; i < weights.length; i++) if ((r -= weights[i]) <= 0) return GUEST_TYPE_KEYS[i];
@@ -1234,6 +1258,10 @@ export class Sim {
     g.roomId = room.id;
     g.satisfaction = score;
     g.roomScore = score;
+    if (GUEST_TYPES[g.type].impatient && !this.hasFrontDesk) {
+      g.satisfaction = Math.max(0, g.satisfaction - 10);
+      this.remember(g, null, -8, 'check-in took forever');
+    }
     if (score >= 75) this.remember(g, room.id, 8, 'our room was perfect');
     else if (score < 45) this.remember(g, room.id, -8, 'our room wasn’t what we hoped for');
     g.thought = score >= 75 ? 'This is perfect!' : score >= 50 ? 'This will do.' : 'Hmm, not what we hoped for.';

@@ -47,6 +47,14 @@ export const NODES: ResearchNode[] = [
   { id: 'boutique', name: 'Boutique', branch: 'leisure', tier: 2, cost: 50, unlocks: ['boutique'], minStars: 3, blurb: 'Premium shopping' },
   { id: 'kidsClub', name: 'Kids’ Club', branch: 'leisure', tier: 2, cost: 45, unlocks: ['kidsClub'], blurb: 'Keeps families happy' },
   // Tier 3
+  { id: 'suites', name: 'Suites', branch: 'hospitality', tier: 3, cost: 90, unlocks: ['suites'], minStars: 4, blurb: 'Luxury rooms VIPs expect' },
+  { id: 'fineDining', name: 'Fine Dining', branch: 'dining', tier: 3, cost: 90, unlocks: ['fineDining'], minStars: 4, blurb: 'Luxury meals' },
+  { id: 'movieTheater', name: 'Movie Theater', branch: 'leisure', tier: 3, cost: 70, unlocks: ['movieTheater'], blurb: 'Big crowds, rainy-day fun' },
+  { id: 'conferenceHall', name: 'Conference Hall', branch: 'operations', tier: 3, cost: 80, unlocks: ['conferenceHall'], minStars: 3, blurb: 'Brings business guests' },
+  // Tier 4
+  { id: 'waterVillas', name: 'Water Villas', branch: 'hospitality', tier: 4, cost: 140, unlocks: ['waterVillas'], minStars: 4.5, blurb: 'The most luxurious rooms' },
+  { id: 'helipad', name: 'Helipad', branch: 'operations', tier: 4, cost: 120, unlocks: ['helipad'], minStars: 4, blurb: 'VIPs fly in' },
+  { id: 'marina', name: 'Marina', branch: 'leisure', tier: 4, cost: 120, unlocks: ['marina'], minStars: 4, blurb: 'Yacht trips' },
   { id: 'nightclub', name: 'Nightclub', branch: 'leisure', tier: 3, cost: 100, unlocks: ['nightclub'], minStars: 3, blurb: 'Party groups love it; neighbours don’t' },
   { id: 'diveShop', name: 'Dive Shop', branch: 'operations', tier: 2, cost: 55, unlocks: ['diveShop'], minStars: 3, blurb: 'Dive trips from the shore' },
 ];

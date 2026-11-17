@@ -77,6 +77,11 @@ export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   diveShop: { need: 'fun', gain: 60, capacity: 4, service: 12, lineMax: 4, basePrice: 55 },
   kidsClub: { need: 'fun', gain: 50, capacity: 6, service: 9, lineMax: 4, basePrice: 15, only: ['family'], perChild: true, bonus: { rest: 10 } },
   nightclub: { need: 'fun', gain: 55, capacity: 14, service: 10, lineMax: 8, basePrice: 30, bonus: { hunger: 5 } },
+  fineDining: { need: 'hunger', gain: 90, capacity: 8, service: 10, lineMax: 4, basePrice: 80, bonus: { comfort: 20 } },
+  movieTheater: { need: 'fun', gain: 50, capacity: 16, service: 12, lineMax: 8, basePrice: 18, bonus: { rest: 10 } },
+  // Business guests hold meetings and events here (GDD "Event bookings").
+  conferenceHall: { need: 'fun', gain: 45, capacity: 12, service: 14, lineMax: 6, basePrice: 70, only: ['business'], bonus: { comfort: 10 } },
+  marina: { need: 'fun', gain: 70, capacity: 6, service: 14, lineMax: 4, basePrice: 90, bonus: { comfort: 15 } },
 };
 
 /** Sim seconds a guest will stand in a line before walking off. */
@@ -105,6 +110,7 @@ export const PRICE_TOLERANCE: Record<string, number> = {
   wellness: 1.4,
   party: 1.15,
   vip: 1.75,
+  business: 1.5,
 };
 
 /** Chance a guest buys at a price step, before checking their wallet. */

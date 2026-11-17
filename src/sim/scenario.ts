@@ -10,12 +10,14 @@ import type { NightReport, Sim, SimEvent } from './sim';
  * points. They give short sessions a clear target."
  */
 
-export type Metric = 'served' | 'rating' | 'profit7' | 'research' | 'plots';
+export type Metric = 'served' | 'rating' | 'profit7' | 'research' | 'plots' | 'families' | 'building';
 
 export interface Goal {
   metric: Metric;
   target: number;
   label: string;
+  /** For 'building': which building must exist. */
+  building?: BuildingKind;
 }
 
 export type MedalTier = 'bronze' | 'silver' | 'gold';
@@ -30,6 +32,8 @@ export interface ScenarioDef {
   /** Days to earn medals in; after that the best medal so far is final. */
   days: number;
   medals: Record<MedalTier, Goal[]>;
+  /** Multiplies how often each guest type arrives. */
+  guestBias?: Partial<Record<string, number>>;
 }
 
 export const SCENARIOS: ScenarioDef[] = [
@@ -54,6 +58,30 @@ export const SCENARIOS: ScenarioDef[] = [
         { metric: 'rating', target: 4.2, label: 'Reach a ★4.2 rating' },
         { metric: 'profit7', target: 40000, label: 'Make 40,000 profit over 7 days' },
         { metric: 'plots', target: 3, label: 'Buy 3 plots of land' },
+      ],
+    },
+  },
+  {
+    id: 'familyCove',
+    name: 'Family Cove',
+    blurb: 'A calm bay where families come back year after year. Keep the kids busy and the walks short.',
+    startMoney: 15000,
+    days: 30,
+    guestBias: { family: 4, party: 0.2, couple: 0.8 },
+    medals: {
+      bronze: [
+        { metric: 'families', target: 10, label: 'Host 10 families' },
+        { metric: 'building', target: 1, building: 'kidsClub', label: 'Build a Kids’ Club' },
+      ],
+      silver: [
+        { metric: 'families', target: 40, label: 'Host 40 families' },
+        { metric: 'rating', target: 3.6, label: 'Reach a ★3.6 rating' },
+        { metric: 'building', target: 1, building: 'pool', label: 'Build a Pool' },
+      ],
+      gold: [
+        { metric: 'families', target: 100, label: 'Host 100 families' },
+        { metric: 'rating', target: 4.2, label: 'Reach a ★4.2 rating' },
+        { metric: 'profit7', target: 35000, label: 'Make 35,000 profit over 7 days' },
       ],
     },
   },
@@ -85,6 +113,8 @@ export interface CampaignState {
   medals: Partial<Record<MedalTier, number>>;
   /** People checked in so far (the GDD Visitors measure). */
   served: number;
+  /** Family parties checked in. */
+  families?: number;
   /** Profit of each finished day, newest last. */
   profits: number[];
   objectives: Objective[];
@@ -158,11 +188,21 @@ export class Campaign {
         return this.sim.research.done.size;
       case 'plots':
         return this.sim.world.plotsBought;
+      case 'families':
+        return this.state.families ?? 0;
+      case 'building':
+        return 0;
     }
   }
 
   goalMet(g: Goal): boolean {
+    if (g.metric === 'building') return this.sim.world.buildings.some((b) => b.kind === g.building);
     return this.metric(g.metric) >= g.target;
+  }
+
+  /** Progress shown for a goal (buildings count as 0 or 1). */
+  progress(g: Goal): number {
+    return g.metric === 'building' ? (this.goalMet(g) ? 1 : 0) : this.metric(g.metric);
   }
 
   /** The best medal won so far. */
@@ -201,6 +241,7 @@ export class Campaign {
       case 'checkedIn': {
         const g = this.sim.guest(e.guestId);
         this.state.served += g?.size ?? 1;
+        if (g?.type === 'family') this.state.families = (this.state.families ?? 0) + 1;
         this.bump('checkins', 1);
         break;
       }

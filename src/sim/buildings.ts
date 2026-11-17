@@ -23,7 +23,14 @@ export type BuildingKind =
   | 'boutique'
   | 'diveShop'
   | 'kidsClub'
-  | 'nightclub';
+  | 'nightclub'
+  | 'suites'
+  | 'fineDining'
+  | 'movieTheater'
+  | 'conferenceHall'
+  | 'waterVillas'
+  | 'helipad'
+  | 'marina';
 
 export type BuildingFamily = 'rooms' | 'food' | 'fun' | 'services';
 
@@ -258,6 +265,94 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     quality: 3,
     unlock: 3,
     noisy: true,
+  },
+  // ---------- tiers 3 and 4 (expansion) ----------
+  suites: {
+    kind: 'suites',
+    name: 'Suites',
+    family: 'rooms',
+    w: 3,
+    h: 3,
+    cost: 9000,
+    upkeep: 140,
+    blurb: '2 luxury suites',
+    quality: 4,
+    unlock: 3,
+  },
+  fineDining: {
+    kind: 'fineDining',
+    name: 'Fine Dining',
+    family: 'food',
+    w: 3,
+    h: 3,
+    cost: 11000,
+    upkeep: 140,
+    blurb: 'Luxury meals',
+    quality: 4,
+    unlock: 3,
+  },
+  movieTheater: {
+    kind: 'movieTheater',
+    name: 'Movie Theater',
+    family: 'fun',
+    w: 3,
+    h: 3,
+    cost: 7000,
+    upkeep: 90,
+    blurb: 'Films · fun',
+    quality: 2,
+    unlock: 3,
+  },
+  conferenceHall: {
+    kind: 'conferenceHall',
+    name: 'Conference Hall',
+    family: 'services',
+    w: 4,
+    h: 3,
+    cost: 10000,
+    upkeep: 120,
+    blurb: 'Brings business guests',
+    quality: 3,
+    unlock: 3,
+  },
+  waterVillas: {
+    kind: 'waterVillas',
+    name: 'Water Villas',
+    family: 'rooms',
+    w: 2,
+    h: 2,
+    cost: 8000,
+    upkeep: 120,
+    blurb: '2 luxury villas · shore',
+    quality: 4,
+    unlock: 4,
+    coast: true,
+  },
+  helipad: {
+    kind: 'helipad',
+    name: 'Helipad',
+    family: 'services',
+    w: 3,
+    h: 3,
+    cost: 12000,
+    upkeep: 150,
+    blurb: 'Brings VIPs',
+    quality: 4,
+    unlock: 4,
+    noisy: true,
+  },
+  marina: {
+    kind: 'marina',
+    name: 'Marina',
+    family: 'fun',
+    w: 4,
+    h: 2,
+    cost: 12000,
+    upkeep: 140,
+    blurb: 'Yacht trips · shore',
+    quality: 4,
+    unlock: 4,
+    coast: true,
   },
 };
 
