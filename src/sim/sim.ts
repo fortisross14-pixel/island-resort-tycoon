@@ -92,8 +92,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'Backpacker',
     size: [1, 1],
     nights: [1, 2],
-    budget: [40, 70],
-    spend: [35, 60],
+    budget: [55, 90],
+    spend: [50, 90],
     tier: 1,
     wishPool: ['snacks', 'shortWalk', 'bar'],
     wishCount: [1, 1],
@@ -106,8 +106,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'Couple',
     size: [2, 2],
     nights: [2, 4],
-    budget: [90, 140],
-    spend: [110, 170],
+    budget: [120, 190],
+    spend: [160, 250],
     tier: 2,
     wishPool: ['buffet', 'quiet', 'snacks', 'pool'],
     wishCount: [1, 2],
@@ -120,8 +120,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'Family',
     size: [3, 4],
     nights: [3, 5],
-    budget: [80, 130],
-    spend: [100, 160],
+    budget: [110, 170],
+    spend: [150, 240],
     tier: 2,
     wishPool: ['buffet', 'pool', 'kidsClub', 'shortWalk'],
     wishCount: [1, 2],
@@ -135,8 +135,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'Wellness seeker',
     size: [1, 1],
     nights: [3, 7],
-    budget: [130, 200],
-    spend: [150, 240],
+    budget: [180, 270],
+    spend: [220, 340],
     tier: 3,
     wishPool: ['spa', 'gym', 'quiet'],
     wishCount: [1, 2],
@@ -149,8 +149,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'Party group',
     size: [3, 3],
     nights: [2, 3],
-    budget: [70, 110],
-    spend: [130, 200],
+    budget: [100, 150],
+    spend: [190, 290],
     tier: 2,
     wishPool: ['bar', 'nightclub'],
     wishCount: [1, 2],
@@ -164,8 +164,8 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     name: 'VIP',
     size: [2, 2],
     nights: [2, 3],
-    budget: [260, 400],
-    spend: [300, 500],
+    budget: [360, 520],
+    spend: [450, 700],
     tier: 4,
     wishPool: ['quiet', 'spa'],
     wishCount: [1, 2],
@@ -378,7 +378,8 @@ const emptyStats = (): DayStats => ({
 
 /** Parties on a day's ferry: grows with the days and, above all, with the star rating. */
 export function arrivalsForDay(day: number, stars = 2.5): number {
-  return Math.max(2, Math.min(14, Math.round(2 + day * 0.7 + (stars - 2.5) * 2.5)));
+  // Word of mouth: the rating scales the crowd far more than the calendar does.
+  return Math.max(2, Math.min(18, Math.round((3 + day * 0.4) * (0.4 + 0.3 * stars))));
 }
 
 /** Share of couples (richer guests) on the ferry, which rises with the rating. */
@@ -1153,7 +1154,7 @@ export class Sim {
       this.remember(g, b.id, -8, `the ${name} was far too crowded`);
     }
     // Richer guests notice a budget venue (quality class below their tier).
-    if (BUILDINGS[b.kind].quality < g.tier) {
+    if (g.tier - BUILDINGS[b.kind].quality >= 2) {
       mood -= 2;
       this.remember(g, b.id, -3, `the ${name} felt a bit basic`);
     }
@@ -1281,7 +1282,8 @@ export class Sim {
     g.state = 'waiting';
     this.today.turnedAway++;
     this.remember(g, null, -20, 'we waited ages on the pier and never got a room');
-    this.writeReview(g, 1);
+    // Not everyone who leaves bothers to write a review.
+    if (this.rng.next() < 0.5) this.writeReview(g, 1);
     this.emit({ type: 'gaveUp', guestId: g.id });
   }
 
@@ -1336,6 +1338,8 @@ export class Sim {
       if (def.only && !def.only.includes(g.type)) continue;
       let u = Math.min(def.gain, deficit) * (deficit > 30 ? 1 : 0.3);
       if (type.likes.includes(b.kind)) u *= 1.6;
+      // Taste: a place two classes above their budget isn't their kind of place.
+      if (BUILDINGS[b.kind].quality - g.tier >= 2) u *= 0.25;
       if (type.dislikes.includes(b.kind)) u *= 0.15;
       for (const [n, add] of Object.entries(def.bonus ?? {})) u += Math.min(add ?? 0, 100 - m[n as keyof Meters]) * 0.5;
       u *= 1 / (1 + d / (GUEST_TYPES[g.type].walkShy ? 5 : 8));
@@ -1355,7 +1359,7 @@ export class Sim {
 
     const tiles = this.world.pathTiles();
     // A stroll is the free fallback for fun: always possible, but less fun than a venue.
-    out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.3 + 5 });
+    out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.2 + 4 });
     return out;
   }
 

@@ -61,10 +61,10 @@ const RESTAURANT: VenueDef = {
 };
 
 export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
-  snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 10, bonus: { fun: 5 } },
-  buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 25, bonus: { comfort: 5 } },
+  snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 14, bonus: { fun: 5 } },
+  buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 26, bonus: { comfort: 5 } },
   beachBar: { need: 'fun', gain: 40, capacity: 4, service: 4, lineMax: 4, basePrice: 12, bonus: { hunger: 5 } },
-  giftShop: { need: 'fun', gain: 25, capacity: 3, service: 3, lineMax: 3, basePrice: 18 },
+  giftShop: { need: 'fun', gain: 30, capacity: 3, service: 3, lineMax: 3, basePrice: 12 },
   // Free to use: it earns through happier guests and better reviews (GDD "Free (appeal)").
   pool: { need: 'fun', gain: 35, capacity: 10, service: 7, lineMax: 6, basePrice: 0, bonus: { comfort: 25 } },
   // Tier 2 (Pass 1)
@@ -73,7 +73,7 @@ export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   asianRestaurant: RESTAURANT,
   gym: { need: 'comfort', gain: 25, capacity: 6, service: 6, lineMax: 4, basePrice: 10, bonus: { fun: 15 } },
   spa: { need: 'comfort', gain: 55, capacity: 4, service: 10, lineMax: 4, basePrice: 60, bonus: { rest: 25 } },
-  boutique: { need: 'fun', gain: 30, capacity: 4, service: 5, lineMax: 3, basePrice: 50, bonus: { comfort: 10 } },
+  boutique: { need: 'fun', gain: 35, capacity: 4, service: 5, lineMax: 3, basePrice: 40, bonus: { comfort: 10 } },
   diveShop: { need: 'fun', gain: 60, capacity: 4, service: 12, lineMax: 4, basePrice: 55 },
   kidsClub: { need: 'fun', gain: 50, capacity: 6, service: 9, lineMax: 4, basePrice: 15, only: ['family'], perChild: true, bonus: { rest: 10 } },
   nightclub: { need: 'fun', gain: 55, capacity: 14, service: 10, lineMax: 8, basePrice: 30, bonus: { hunger: 5 } },
@@ -99,18 +99,20 @@ export function priceOf(kind: BuildingKind, step: PriceStep): number {
 
 /** Price multiple a guest type accepts without hesitation. */
 export const PRICE_TOLERANCE: Record<string, number> = {
-  backpacker: 0.8,
-  couple: 1.1,
-  family: 0.95,
-  wellness: 1.35,
-  party: 1.05,
-  vip: 1.7,
+  backpacker: 1.0,
+  couple: 1.2,
+  family: 1.05,
+  wellness: 1.4,
+  party: 1.15,
+  vip: 1.75,
 };
 
 /** Chance a guest buys at a price step, before checking their wallet. */
 export function buyChance(type: string, step: PriceStep): number {
-  const over = Math.max(0, PRICE_STEPS[step].mult - (PRICE_TOLERANCE[type] ?? 1));
-  return Math.max(0.05, Math.min(0.97, 0.95 - over * 1.5));
+  const over = PRICE_STEPS[step].mult - (PRICE_TOLERANCE[type] ?? 1);
+  // Within their tolerance they nearly always buy; above it the chance falls fast.
+  if (over <= 0) return 0.99;
+  return Math.max(0.05, Math.min(0.95, 0.95 - over * 1.5));
 }
 
 export function fullMeters(): Meters {
@@ -126,7 +128,7 @@ export function lowestNeed(m: Meters): Need {
 // ---------- room rates and costs (M5) ----------
 
 /** Nightly room rate per party at the "Fair" step, by room tier. */
-export const ROOM_BASE_RATE: Record<number, number> = { 1: 50, 2: 90, 3: 160, 4: 260 };
+export const ROOM_BASE_RATE: Record<number, number> = { 1: 70, 2: 130, 3: 220, 4: 360 };
 
 export function roomRateOf(tier: number, step: PriceStep): number {
   return Math.round((ROOM_BASE_RATE[tier] ?? 50) * PRICE_STEPS[step].mult);

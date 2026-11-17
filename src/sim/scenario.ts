@@ -37,22 +37,23 @@ export const SCENARIOS: ScenarioDef[] = [
     id: 'driftwood',
     name: 'Driftwood Beginnings',
     blurb: 'A quiet sandbar and a ferry full of curious travellers. Build rooms, feed people, and earn your first stars.',
-    startMoney: 15000,
+    startMoney: 13000,
     days: 30,
     medals: {
       bronze: [
-        { metric: 'served', target: 20, label: 'Serve 20 guests' },
-        { metric: 'rating', target: 2, label: 'Reach a ★2 rating' },
+        { metric: 'served', target: 30, label: 'Serve 30 guests' },
+        { metric: 'rating', target: 2.8, label: 'Reach a ★2.8 rating' },
       ],
       silver: [
-        { metric: 'served', target: 60, label: 'Serve 60 guests' },
-        { metric: 'rating', target: 3, label: 'Reach a ★3 rating' },
-        { metric: 'research', target: 3, label: 'Research 3 topics' },
-      ],
-      gold: [
         { metric: 'served', target: 120, label: 'Serve 120 guests' },
         { metric: 'rating', target: 3.5, label: 'Reach a ★3.5 rating' },
-        { metric: 'profit7', target: 3000, label: 'Make 3,000 profit over 7 days' },
+        { metric: 'research', target: 6, label: 'Research 6 topics' },
+      ],
+      gold: [
+        { metric: 'served', target: 350, label: 'Serve 350 guests' },
+        { metric: 'rating', target: 4.2, label: 'Reach a ★4.2 rating' },
+        { metric: 'profit7', target: 40000, label: 'Make 40,000 profit over 7 days' },
+        { metric: 'plots', target: 3, label: 'Buy 3 plots of land' },
       ],
     },
   },

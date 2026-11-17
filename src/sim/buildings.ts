@@ -62,7 +62,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     family: 'rooms',
     w: 2,
     h: 2,
-    cost: 2000,
+    cost: 1500,
     upkeep: 30,
     blurb: '2 rooms',
     quality: 1,
@@ -74,7 +74,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     family: 'rooms',
     w: 2,
     h: 2,
-    cost: 3500,
+    cost: 2800,
     upkeep: 50,
     blurb: '2 nicer rooms',
     quality: 2,
@@ -175,7 +175,7 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     family: 'rooms',
     w: 3,
     h: 2,
-    cost: 6500,
+    cost: 4500,
     upkeep: 85,
     blurb: '2 premium rooms',
     quality: 3,
@@ -302,7 +302,7 @@ export function floorCost(kind: BuildingKind): number {
 /** Demolishing refunds this share of the build cost (GDD: 50%). */
 export const DEMOLISH_REFUND = 0.5;
 
-export const START_MONEY = 15000;
+export const START_MONEY = 13000;
 
 export type Rotation = 0 | 1 | 2 | 3;
 

@@ -21,7 +21,7 @@ are deliberately left rough.
 | M4 | Needs and spending | **Done** |
 | M5 | Economy, night report and reviews | **Done** |
 | Pass 1 | Depth and scenarios | **Done** |
-| Pass 2 | Balance | Next |
+| Pass 2 | Balance | **Done** |
 | Pass 3 | Graphics, visuals and GUI | Planned |
 
 ---
@@ -138,11 +138,11 @@ More to build and more reasons to build it. The full building plan is in
 
 Pass 1 is done. Left for later depth: tier 3–4 content (Suites, Water Villas, Fine Dining, Movie Theater, Conference Hall, Helipad, Marina), scenarios 2–8, rival resorts and rankings, staff, decoration and utilities, special plot types (beach, cliff, jungle).
 
-## Pass 2 — Balance
+## Pass 2 — Balance ✅
 
-A headless playtest harness that runs many days with scripted layouts and logs the economy,
-then tuning against the GDD targets (profitable by day 2, payback in 4–8 days when placed well,
-spending overtaking room income by mid-game).
+A headless playtest harness (`npm run playtest`) plays many days with a fixed starter resort and a scripted
+bot, and logs the economy, payback per building and review complaints. The game was tuned against the GDD
+targets and the targets became tests (`tests/balance.test.ts`). Details and results: [BALANCE.md](BALANCE.md).
 
 ## Pass 3 — Graphics, visuals and GUI
 

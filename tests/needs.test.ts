@@ -33,8 +33,8 @@ function runHours(sim: Sim, hours: number, each?: () => void): void {
 
 describe('prices', () => {
   it('has five steps around a fair base price', () => {
-    expect([0, 1, 2, 3, 4].map((s) => priceOf('snackBar', s as PriceStep))).toEqual([6, 8, 10, 13, 17]);
-    expect(priceOf('buffet', 2)).toBe(25);
+    expect([0, 1, 2, 3, 4].map((s) => priceOf('snackBar', s as PriceStep))).toEqual([8, 11, 14, 18, 24]);
+    expect(priceOf('buffet', 2)).toBe(26);
   });
 
   it('backpackers are more price-sensitive than couples', () => {

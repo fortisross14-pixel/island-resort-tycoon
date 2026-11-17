@@ -33,22 +33,22 @@ export interface ResearchNode {
 
 export const NODES: ResearchNode[] = [
   // Tier 1
-  { id: 'standardRooms', name: 'Standard Rooms', branch: 'hospitality', tier: 1, cost: 6, unlocks: ['standardRooms'], blurb: 'Mid-class rooms that couples expect' },
-  { id: 'frontDesk', name: 'Front Desk', branch: 'operations', tier: 1, cost: 5, unlocks: ['frontDesk'], blurb: 'Auto-assign and longer patience' },
-  { id: 'beachBar', name: 'Beach Bar', branch: 'dining', tier: 1, cost: 5, unlocks: ['beachBar'], blurb: 'Drinks on the shore' },
-  { id: 'pool', name: 'Pool', branch: 'leisure', tier: 1, cost: 7, unlocks: ['pool'], blurb: 'Free fun and comfort' },
-  { id: 'giftShop', name: 'Gift Shop', branch: 'leisure', tier: 1, cost: 4, unlocks: ['giftShop'], blurb: 'Souvenirs for every budget' },
+  { id: 'standardRooms', name: 'Standard Rooms', branch: 'hospitality', tier: 1, cost: 18, unlocks: ['standardRooms'], blurb: 'Mid-class rooms that couples expect' },
+  { id: 'frontDesk', name: 'Front Desk', branch: 'operations', tier: 1, cost: 15, unlocks: ['frontDesk'], blurb: 'Auto-assign and longer patience' },
+  { id: 'beachBar', name: 'Beach Bar', branch: 'dining', tier: 1, cost: 15, unlocks: ['beachBar'], blurb: 'Drinks on the shore' },
+  { id: 'pool', name: 'Pool', branch: 'leisure', tier: 1, cost: 20, unlocks: ['pool'], blurb: 'Free fun and comfort' },
+  { id: 'giftShop', name: 'Gift Shop', branch: 'leisure', tier: 1, cost: 12, unlocks: ['giftShop'], blurb: 'Souvenirs for every budget' },
   // Tier 2
-  { id: 'tallBuildings', name: 'Tall Buildings', branch: 'hospitality', tier: 2, cost: 12, unlocks: [], blurb: 'Room buildings up to 6 floors' },
-  { id: 'gardenBungalows', name: 'Garden Bungalows', branch: 'hospitality', tier: 2, cost: 15, unlocks: ['gardenBungalows'], minStars: 3, blurb: 'Premium rooms in a quiet garden' },
-  { id: 'restaurants', name: 'Themed Restaurants', branch: 'dining', tier: 2, cost: 15, unlocks: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant'], minStars: 3, blurb: 'Italian, Seafood and Asian' },
-  { id: 'gym', name: 'Gym', branch: 'leisure', tier: 2, cost: 10, unlocks: ['gym'], blurb: 'Comfort and a little fun' },
-  { id: 'spa', name: 'Spa', branch: 'leisure', tier: 2, cost: 16, unlocks: ['spa'], minStars: 3, blurb: 'Premium comfort and rest' },
-  { id: 'boutique', name: 'Boutique', branch: 'leisure', tier: 2, cost: 12, unlocks: ['boutique'], minStars: 3, blurb: 'Premium shopping' },
-  { id: 'kidsClub', name: 'Kids’ Club', branch: 'leisure', tier: 2, cost: 10, unlocks: ['kidsClub'], blurb: 'Keeps families happy' },
+  { id: 'tallBuildings', name: 'Tall Buildings', branch: 'hospitality', tier: 2, cost: 40, unlocks: [], blurb: 'Room buildings up to 6 floors' },
+  { id: 'gardenBungalows', name: 'Garden Bungalows', branch: 'hospitality', tier: 2, cost: 60, unlocks: ['gardenBungalows'], minStars: 3, blurb: 'Premium rooms in a quiet garden' },
+  { id: 'restaurants', name: 'Themed Restaurants', branch: 'dining', tier: 2, cost: 60, unlocks: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant'], minStars: 3, blurb: 'Italian, Seafood and Asian' },
+  { id: 'gym', name: 'Gym', branch: 'leisure', tier: 2, cost: 45, unlocks: ['gym'], blurb: 'Comfort and a little fun' },
+  { id: 'spa', name: 'Spa', branch: 'leisure', tier: 2, cost: 65, unlocks: ['spa'], minStars: 3, blurb: 'Premium comfort and rest' },
+  { id: 'boutique', name: 'Boutique', branch: 'leisure', tier: 2, cost: 50, unlocks: ['boutique'], minStars: 3, blurb: 'Premium shopping' },
+  { id: 'kidsClub', name: 'Kids’ Club', branch: 'leisure', tier: 2, cost: 45, unlocks: ['kidsClub'], blurb: 'Keeps families happy' },
   // Tier 3
-  { id: 'nightclub', name: 'Nightclub', branch: 'leisure', tier: 3, cost: 25, unlocks: ['nightclub'], minStars: 3, blurb: 'Party groups love it; neighbours don’t' },
-  { id: 'diveShop', name: 'Dive Shop', branch: 'operations', tier: 2, cost: 14, unlocks: ['diveShop'], minStars: 3, blurb: 'Dive trips from the shore' },
+  { id: 'nightclub', name: 'Nightclub', branch: 'leisure', tier: 3, cost: 100, unlocks: ['nightclub'], minStars: 3, blurb: 'Party groups love it; neighbours don’t' },
+  { id: 'diveShop', name: 'Dive Shop', branch: 'operations', tier: 2, cost: 55, unlocks: ['diveShop'], minStars: 3, blurb: 'Dive trips from the shore' },
 ];
 
 /** Nodes of the tier below needed before a node of tier ≥ 2. */

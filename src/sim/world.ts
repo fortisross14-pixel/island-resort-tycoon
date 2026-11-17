@@ -44,7 +44,7 @@ export interface Layout {
 
 /** Side of a land plot in tiles. */
 export const PLOT_SIZE = 7;
-export const PLOT_BASE_PRICE = 3000;
+export const PLOT_BASE_PRICE = 5000;
 export const PLOT_PRICE_GROWTH = 1.35;
 
 /** A fully owned square island: the original prototype map, still used by tests. */

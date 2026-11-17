@@ -156,7 +156,7 @@ export class InfoPanel {
       : '<li class="muted">Empty</li>';
     return `
       <div class="prices" role="group" aria-label="Nightly rate per party, all tier ${tier} rooms">${rates}</div>
-      <p class="estimate">Nightly rate for every tier ${tier} room. Backpackers budget about 40–70, couples 90–140.</p>
+      <p class="estimate">Nightly rate for every tier ${tier} room. Backpackers budget about 55–90, couples 120–190.</p>
       <dl>
         <dt>Tonight</dt><dd>${coin}${lodgers.filter((g) => !g.leaving).reduce((sum, g) => sum + Math.min(this.sim.roomRate(b), g.budget), 0)} expected</dd>
         <dt>Rooms</dt><dd>${lodgers.length} of ${this.sim.capacity(b)} taken</dd>

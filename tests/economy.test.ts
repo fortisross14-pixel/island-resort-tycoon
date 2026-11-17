@@ -103,7 +103,9 @@ describe('the night', () => {
     const sim = new Sim(w);
     sim.pauseAtNight = true;
     const r = untilNight(sim);
-    expect(r.reviews.length).toBe(r.stats.turnedAway);
+    // About half of the parties who give up write a review.
+    expect(r.reviews.length).toBeGreaterThan(0);
+    expect(r.reviews.length).toBeLessThanOrEqual(r.stats.turnedAway);
     expect(r.reviews.every((rv) => rv.stars === 1)).toBe(true);
     expect(r.reviews[0].text).toMatch(/never got a room/);
     expect(r.worst).toMatch(/gave up/);

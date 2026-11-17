@@ -57,8 +57,8 @@ describe('research', () => {
   it('cannot research without enough points, or twice', () => {
     const { sim } = island();
     sim.research.points = 2;
-    expect(sim.researchTopic('pool')).toEqual({ ok: false, reason: 'Needs 7 points' });
-    sim.research.points = 10;
+    expect(sim.researchTopic('pool')).toEqual({ ok: false, reason: 'Needs 20 points' });
+    sim.research.points = 30;
     sim.researchTopic('pool');
     expect(sim.researchTopic('pool')).toEqual({ ok: false, reason: 'Already researched' });
   });
