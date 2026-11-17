@@ -214,3 +214,41 @@ describe('land plots (Pass 1)', () => {
     expect(w.money).toBe(100000);
   });
 });
+
+import { islandLayout as layoutOf } from '../src/sim/islands';
+import { JUNGLE_CLEAR_COST, MIN_MOVE_COST } from '../src/sim/world';
+
+describe('moving and bulldozing (Pass 5)', () => {
+  it('moves a building for a fee, keeping its floors and wear', () => {
+    const w = new World(14, 100000);
+    const d = w.dock;
+    for (let y = d.y - 1; y >= 2; y--) w.placePath(d.x, y);
+    const b = w.placeBuilding('basicRooms', d.x + 1, 3, 0).building!;
+    b.condition = 60;
+    w.addFloor(b.id, 3);
+    const before = w.money;
+    const cost = w.moveCost(b.id);
+    expect(cost).toBeGreaterThanOrEqual(MIN_MOVE_COST);
+    expect(w.moveBuilding(b.id, d.x - 2, 6, 1).ok).toBe(true);
+    expect(before - w.money).toBe(cost);
+    expect(w.buildingAt(d.x + 1, 3)).toBeUndefined();
+    expect(w.buildingAt(d.x - 2, 6)?.id).toBe(b.id);
+    expect(b.floors).toBe(2);
+    expect(b.condition).toBe(60);
+    // It may overlap its own old spot.
+    expect(w.canMoveBuilding(b.id, d.x - 2, 7, 1).ok).toBe(true);
+  });
+
+  it('bulldozes jungle and rock to grass on owned land, but not landmarks', () => {
+    const w = World.onIsland(layoutOf('coconutKey'), 100000);
+    for (const p of w.plots) w.buyPlot(p.id);
+    let jungle: { x: number; y: number } | null = null;
+    for (let y = 0; y < w.size && !jungle; y++) for (let x = 0; x < w.size && !jungle; x++) if (w.terrainAt(x, y) === 'j' && !w.landmarks.some((l) => l.x === x && l.y === y)) jungle = { x, y };
+    const before = w.money;
+    expect(w.demolishAt(jungle!.x, jungle!.y).ok).toBe(true);
+    expect(w.terrainAt(jungle!.x, jungle!.y)).toBe('g');
+    expect(before - w.money).toBe(JUNGLE_CLEAR_COST);
+    const peak = w.landmarks.find((l) => l.kind === 'viewpoint')!;
+    expect(w.demolishAt(peak.x, peak.y)).toEqual({ ok: false, reason: 'That’s a landmark: it stays' });
+  });
+});

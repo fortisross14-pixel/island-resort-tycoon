@@ -40,6 +40,7 @@ export class InfoPanel {
       addElevator(id: number): void;
       repair(id: number): void;
       drawRoute(id: number): void;
+      move(id: number): void;
       togglePlan(id: number, slot: Slot): void;
     },
   ) {
@@ -61,6 +62,7 @@ export class InfoPanel {
       if (t.closest('[data-elevator]')) this.actions.addElevator(this.subject.id);
       if (t.closest('[data-repair]')) this.actions.repair(this.subject.id);
       if (t.closest('[data-route]')) this.actions.drawRoute(this.subject.id);
+      if (t.closest('[data-move]')) return this.actions.move(this.subject.id);
       const slot = t.closest<HTMLElement>('[data-hubslot]');
       if (slot) this.actions.togglePlan(this.subject.id, slot.dataset.hubslot as Slot);
       const ap = t.closest<HTMLButtonElement>('[data-aprice]');
@@ -165,7 +167,8 @@ export class InfoPanel {
     const cost = this.sim.world.repairCost(b.id);
     const note = c < 50 ? '<p class="estimate warn">Run-down: guests notice, and it spoils the view nearby.</p>' : '';
     const repair = c < 99 ? `<button data-repair class="${c < 50 ? 'urgent' : ''}">Repair <span>${coin}${cost.toLocaleString('en-US')}</span></button>` : '';
-    return `<div class="condition">${bar(c, 'Condition')}${repair}</div>${note}`;
+    const move = BUILDINGS[b.kind].fixed ? '' : `<button data-move title="Move it somewhere else">Move <span>${coin}${this.sim.world.moveCost(b.id).toLocaleString('en-US')}</span></button>`;
+    return `<div class="condition">${bar(c, 'Condition')}<div class="cond-actions">${repair}${move}</div></div>${note}`;
   }
 
   private decorHtml(b: Building): string {

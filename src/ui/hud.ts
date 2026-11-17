@@ -1,5 +1,5 @@
 import { SLOTS, SLOT_NAMES, type Slot } from '../sim/activities';
-import { MAINTENANCE_LEVELS, MAINTENANCE_NAMES, type MaintenanceLevel } from '../sim/ratings';
+import { MAINTENANCE_EFFECT, MAINTENANCE_LEVELS, MAINTENANCE_NAMES, type MaintenanceLevel } from '../sim/ratings';
 import { yearOf } from '../sim/calendar';
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, RATING_CATEGORIES, RATING_NAMES, type BuildingKind, type RatingCategory } from '../sim/buildings';
 import { nodeFor } from '../sim/research';
@@ -7,7 +7,7 @@ import { WISHES, type Wish } from '../sim/match';
 import { BRANCHES, GATE_COUNT, type NodeStatus, type ResearchNode } from '../sim/research';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
-export type TrayItem = BuildingKind | 'path' | 'land';
+export type TrayItem = BuildingKind | 'path' | 'land' | 'bulldoze';
 
 /** One activity hub in the Plan sheet (Pass 4 step 3). */
 export interface PlanRow {
@@ -127,6 +127,7 @@ const ICONS: Record<TrayItem, string> = {
   spa: '<svg viewBox="0 0 32 32"><path d="M4 13 L16 6 L28 13 Z" fill="#5fb3a5"/><rect x="6" y="13" width="20" height="13" fill="#fff"/><path d="M16 15 q-4 4 0 8 q4 -4 0 -8 Z" fill="#7fd8e8"/></svg>',
   boutique: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#f6effa"/><rect x="4" y="10" width="24" height="4" fill="#7f55b8"/><path d="M12 18 h8 l-1 7 h-6 Z" fill="#ffd166"/></svg>',
   diveShop: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><rect x="5" y="11" width="14" height="11" fill="#3b8fd6"/><rect x="22" y="6" width="1.5" height="14" fill="#9b6b43"/><rect x="23.5" y="6" width="6" height="4" fill="#ff4d4d"/></svg>',
+  bulldoze: '<svg viewBox="0 0 32 32"><rect x="9" y="10" width="13" height="9" rx="1.5" fill="#f2b441"/><rect x="11" y="6" width="7" height="6" fill="#f2b441"/><rect x="12" y="7" width="5" height="3" fill="#bfe7f5"/><path d="M22 12 L28 14 L28 24 L22 21 Z" fill="#8d897c"/><rect x="6" y="20" width="18" height="6" rx="3" fill="#3a4a52"/><circle cx="10" cy="23" r="1.8" fill="#888"/><circle cx="20" cy="23" r="1.8" fill="#888"/></svg>',
   land: '<svg viewBox="0 0 32 32"><path d="M2 22 Q16 14 30 22 V28 H2 Z" fill="#6fd6d6"/><path d="M7 21 Q16 10 25 21 Z" fill="#9fd36f"/><rect x="15" y="6" width="2" height="10" fill="#7d5534"/><path d="M17 6 L24 9 L17 12 Z" fill="#ff8a4c"/></svg>',
   path: '<svg viewBox="0 0 32 32"><path d="M6 28 C 10 18, 22 20, 26 4" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>',
   basicRooms:
@@ -184,7 +185,7 @@ const CATEGORIES: Array<{ id: Category; label: string }> = [
 ];
 
 export function categoryOf(item: TrayItem): Category {
-  if (item === 'path' || item === 'land') return 'paths';
+  if (item === 'path' || item === 'land' || item === 'bulldoze') return 'paths';
   return BUILDINGS[item].family as Category;
 }
 
@@ -259,7 +260,7 @@ export class Hud {
         <button data-new>Islands &amp; research…</button>
         <button data-sound aria-pressed="true">Sound <span>On</span></button>
         <button data-motion aria-pressed="false">Reduce motion <span>Off</span></button>
-        <p class="keys">Keys: 1–9 build · R rotate · X demolish · L land · G guests · Space pause · Ctrl+Z undo</p>
+        <p class="keys">Keys: 1–9 build · R rotate · X bulldoze · L land · G guests · Space pause · Ctrl+Z undo</p>
       </div>
       <div class="toast" data-toast role="status" aria-live="polite"></div>
       <div class="banner" data-banner aria-live="polite"></div>
@@ -267,7 +268,7 @@ export class Hud {
       <div class="tools" data-tools>
         <button class="tool glass" data-rotate aria-label="Rotate (R)" title="Rotate (R)">${UI.rotate}</button>
         <button class="tool glass" data-undo aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)">${UI.undo}</button>
-        <button class="tool glass" data-demolish aria-label="Demolish (X)" title="Demolish (X)">${UI.trash}</button>
+        <button class="tool glass" data-demolish aria-label="Bulldoze (X)" title="Bulldoze (X): buildings, paths, jungle and rock">${UI.trash}</button>
         <button class="tool done" data-cancel aria-label="Done (Esc)" title="Done (Esc)">${UI.check}</button>
       </div>
       <section class="sheet glass" data-sheet hidden>
@@ -386,13 +387,13 @@ export class Hud {
     });
 
     const cardsEl = q<HTMLElement>('[data-cards]');
-    const items: TrayItem[] = ['path', 'land', ...BUILDING_KINDS];
+    const items: TrayItem[] = ['path', 'land', 'bulldoze', ...BUILDING_KINDS];
     for (const item of items) {
       const b = document.createElement('button');
       b.className = 'card';
       b.dataset.cat = categoryOf(item);
-      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : BUILDINGS[item].name;
-      const price = item === 'path' ? `${PATH_COST}` : item === 'land' ? '' : fmt(BUILDINGS[item].cost);
+      const name = item === 'path' ? 'Footpath' : item === 'land' ? 'Buy land' : item === 'bulldoze' ? 'Bulldoze' : BUILDINGS[item].name;
+      const price = item === 'path' ? `${PATH_COST}` : item === 'land' ? '' : item === 'bulldoze' ? '150+' : fmt(BUILDINGS[item].cost);
       b.setAttribute('aria-label', name);
       b.title = name;
       b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="price">${UI.coin}<span data-price>${price}</span></span><span class="i" role="button" aria-label="About ${name}" tabindex="-1">${UI.info}</span><span class="lockmark">${UI.lock}</span>`;
@@ -463,8 +464,7 @@ export class Hud {
     const el = this.root.querySelector<HTMLElement>('[data-ratingrows]')!;
     if (el.innerHTML !== html) el.innerHTML = html;
     for (const b of this.root.querySelectorAll<HTMLElement>('[data-level]')) b.classList.toggle('on', b.dataset.level === maintenance);
-    this.root.querySelector('[data-maintnote]')!.textContent =
-      maintenance === 'low' ? 'Low: upkeep 30% cheaper, but buildings wear almost twice as fast.' : maintenance === 'high' ? 'High: upkeep 60% dearer; buildings stay like new for years.' : 'Normal: upkeep as listed; repair now and then.';
+    this.root.querySelector('[data-maintnote]')!.textContent = MAINTENANCE_EFFECT[maintenance];
   }
 
   private toggleRatings(open = this.root.querySelector<HTMLElement>('[data-ratingspop]')!.hidden): void {
@@ -574,7 +574,9 @@ export class Hud {
     const p = this.infoPop;
     let html: string;
     if (item === 'path') html = `<b>Footpath</b><p>Drag from an existing path. Guests walk on paths, and every building must touch one.</p><dl><dt>Cost</dt><dd>${UI.coin}${PATH_COST} a tile</dd></dl>`;
-    else if (item === 'land') html = `<b>Buy land</b><p>Tap a 7×7 plot next to your island. Each plot costs more than the last.</p>`;
+    else if (item === 'land') html = `<b>Buy land</b><p>Tap a plot next to your land. Bigger plots cost more, and each one costs more than the last.</p>`;
+    else if (item === 'bulldoze')
+      html = `<b>Bulldoze</b><p>Clear a tile: buildings and paths give half their cost back; jungle (${UI.coin}150) and rock (${UI.coin}400) become grass. Landmarks stay.</p>`;
     else {
       const d = BUILDINGS[item];
       const lock = this.cards.get(item)?.dataset.lock;
@@ -758,7 +760,7 @@ export class Hud {
 
   setActive(item: TrayItem | 'demolish' | 'route' | null, canRotate: boolean): void {
     for (const [k, b] of this.cards) b.classList.toggle('active', k === item);
-    this.demolishBtn.classList.toggle('active', item === 'demolish');
+    this.demolishBtn.classList.toggle('active', item === 'bulldoze' || item === 'demolish');
     this.demolishBtn.hidden = item === 'route';
     this.rotateBtn.hidden = !canRotate;
     this.tools.classList.toggle('show', item !== null);

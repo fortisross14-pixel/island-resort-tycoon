@@ -29,6 +29,7 @@ import {
   AppealMap,
   BASE_WEAR,
   MAINTENANCE_COST,
+  MAINTENANCE_NAMES,
   MAINTENANCE_WEAR,
   addScore,
   emptyScores,
@@ -827,7 +828,7 @@ export class Sim {
     if (maint) {
       this.world.earn(-maint);
       t.upkeep += maint;
-      costs.push({ buildingId: null, name: 'Maintenance', amount: -maint, detail: `${this.maintenance} level` });
+      costs.push({ buildingId: null, name: 'Maintenance', amount: -maint, detail: `${MAINTENANCE_NAMES[this.maintenance].toLowerCase()} effort` });
     }
     this.wearBuildings();
     if (t.supplies) costs.push({ buildingId: null, name: 'Supplies', amount: -t.supplies, detail: '30% of food sales' });
@@ -1823,7 +1824,11 @@ export class Sim {
     this.stale = false;
     for (const id of Object.keys(this.venues).map(Number)) if (!this.building(id)) delete this.venues[id];
     // A demolished hub drops out of the plan, and its bookings with it.
-    this.dayPlan = this.dayPlan.filter((p) => this.building(p.hubId));
+    this.dayPlan = this.dayPlan.filter((p) => {
+      const b = this.building(p.hubId);
+      // A hub that lost its route (moved) needs a new one before it runs again.
+      return !!b && (!activityOf(b.kind)?.route || !!this.world.routeOf(b.id));
+    });
     for (const g of this.guests) {
       if (g.booking && !this.building(g.booking.hubId)) g.booking = null;
       if (g.state === 'inline' && (g.insideId === null || !this.building(g.insideId))) {

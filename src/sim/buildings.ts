@@ -104,6 +104,8 @@ export interface BuildingDef {
   decor?: DecorDef;
   /** Which rating a guest's visit counts towards (default: by family). */
   rating?: RatingCategory;
+  /** Part of the island: can't be moved or bulldozed (the Welcome Center). */
+  fixed?: boolean;
 }
 
 /** Which resort rating a building feeds. */

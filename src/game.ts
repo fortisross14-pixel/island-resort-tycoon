@@ -32,6 +32,8 @@ type Tool =
   | { type: 'land' }
   | { type: 'build'; kind: BuildingKind; rot: Rotation }
   | { type: 'demolish' }
+  /** Carrying a building to a new spot (Pass 5). */
+  | { type: 'move'; id: number; rot: Rotation }
   /** Drawing a hike trail or boat route for an activity hub (Pass 4 step 3). */
   | { type: 'route'; hubId: number; tiles: Tile[] };
 
@@ -73,7 +75,8 @@ const HINTS: Record<Tool['type'], string> = {
   none: '',
   path: 'Draw from a path that reaches the dock',
   build: 'Tap or drag next to a path',
-  demolish: 'Tap to remove (50% back)',
+  demolish: 'Tap to bulldoze: buildings and paths (50% back), jungle or rock',
+  move: 'Tap where it should go · R or ⟳ to turn',
 };
 
 /**
@@ -186,6 +189,13 @@ export class Game {
         this.hud.toast(r.ok ? 'Elevator installed' : r.reason, r.ok ? 'good' : 'bad');
       },
       drawRoute: (id) => this.startRoute(id),
+      move: (id) => {
+        const b = this.world.buildings.find((x) => x.id === id);
+        if (!b) return;
+        this.panel.close();
+        this.setTool({ type: 'move', id, rot: b.rot });
+        this.hud.toast(`Moving costs ${this.world.moveCost(id).toLocaleString('en-US')} coins`, 'info');
+      },
       togglePlan: (id, slot) => this.togglePlan(id, slot),
       repair: (id) => {
         const r = this.history.run(() => this.world.repair(id));
@@ -572,6 +582,8 @@ export class Game {
     if (t.type === 'route') {
       this.panel.close();
       if (this.tab !== 'none') this.setTab('none');
+    } else if (t.type === 'move') {
+      if (this.tab !== 'none') this.setTab('none');
     } else if (t.type !== 'none' && this.tab !== 'build') this.setTab('build');
     this.tool = t;
     this.ghostAt = null;
@@ -586,9 +598,9 @@ export class Game {
           : t.type === 'land'
             ? 'land'
             : t.type === 'demolish'
-              ? 'demolish'
+              ? 'bulldoze'
               : null;
-    this.hud.setActive(t.type === 'route' ? 'route' : active, t.type === 'build');
+    this.hud.setActive(t.type === 'route' ? 'route' : t.type === 'move' ? 'route' : active, t.type === 'build' || t.type === 'move');
     this.hud.setHint(HINTS[t.type]);
     if (t.type === 'route') this.drawDraft();
   }
@@ -706,9 +718,23 @@ export class Game {
   }
 
   private rotate(): void {
-    if (this.tool.type !== 'build') return;
+    if (this.tool.type !== 'build' && this.tool.type !== 'move') return;
     this.tool.rot = ((this.tool.rot + 1) % 4) as Rotation;
     if (this.ghostAt) this.previewBuild(this.ghostAt);
+  }
+
+  private tryMove(t: Tile): void {
+    if (this.tool.type !== 'move') return;
+    const { id, rot } = this.tool;
+    const a = this.buildAnchor(t);
+    const r = this.history.run(() => this.world.moveBuilding(id, a.x, a.y, rot));
+    if (!r.ok) {
+      this.sfx.play('error');
+      return this.hud.toast(r.reason);
+    }
+    this.sfx.play('place');
+    this.setTool({ type: 'none' });
+    this.hud.toast('Moved', 'good');
   }
 
   private undo(): void {
@@ -852,12 +878,27 @@ export class Game {
 
   /** Anchor so the finger sits over the middle of the footprint. */
   private buildAnchor(t: Tile): Tile {
-    if (this.tool.type !== 'build') return t;
-    const { w, h } = footprint(this.tool.kind, this.tool.rot);
+    const kind = this.tool.type === 'build' ? this.tool.kind : this.tool.type === 'move' ? this.movingKind() : null;
+    if (!kind || (this.tool.type !== 'build' && this.tool.type !== 'move')) return t;
+    const { w, h } = footprint(kind, this.tool.rot);
     return { x: t.x - Math.floor((w - 1) / 2), y: t.y - Math.floor((h - 1) / 2) };
   }
 
+  private movingKind(): BuildingKind | null {
+    if (this.tool.type !== 'move') return null;
+    const id = this.tool.id;
+    return this.world.buildings.find((b) => b.id === id)?.kind ?? null;
+  }
+
   private previewBuild(t: Tile): void {
+    if (this.tool.type === 'move') {
+      const kind = this.movingKind();
+      if (!kind) return;
+      this.ghostAt = t;
+      const a = this.buildAnchor(t);
+      this.view.showGhost(kind, a.x, a.y, this.tool.rot, this.world.canMoveBuilding(this.tool.id, a.x, a.y, this.tool.rot).ok);
+      return;
+    }
     if (this.tool.type !== 'build') return;
     this.ghostAt = t;
     const a = this.buildAnchor(t);
@@ -869,6 +910,7 @@ export class Game {
     if (!t) return this.view.hideGhost();
     switch (this.tool.type) {
       case 'build':
+      case 'move':
         return this.previewBuild(t);
       case 'path':
         if (!this.world.inBounds(t.x, t.y)) return this.view.hideGhost();
@@ -878,6 +920,7 @@ export class Game {
         if (b) return this.view.highlight(this.world.footprintTiles(b.kind, b.x, b.y, b.rot), 'bad');
         if (this.world.isPath(t.x, t.y))
           return this.view.highlight([t], this.world.canRemovePath(t.x, t.y).ok ? 'bad' : 'info');
+        if (this.world.clearCost(t.x, t.y)) return this.view.highlight([t], this.world.canClear(t.x, t.y).ok ? 'warn' : 'info');
         return this.view.hideGhost();
       }
       default:
@@ -974,6 +1017,7 @@ export class Game {
     this.sfx.play('tap');
     if (item === 'path') this.setTool({ type: 'path' });
     else if (item === 'land') this.setTool(this.tool.type === 'land' ? { type: 'none' } : { type: 'land' });
+    else if (item === 'bulldoze') this.setTool(this.tool.type === 'demolish' ? { type: 'none' } : { type: 'demolish' });
     else {
       const rot = this.tool.type === 'build' && this.tool.kind === item ? this.tool.rot : 0;
       this.setTool({ type: 'build', kind: item, rot });
@@ -1187,6 +1231,9 @@ export class Game {
       case 'build':
         if (t) this.tryBuild(t);
         if (e.pointerType !== 'mouse') this.view.hideGhost();
+        return;
+      case 'move':
+        if (t) this.tryMove(t);
         return;
       case 'demolish':
         if (t && tap) this.tryDemolish(t);

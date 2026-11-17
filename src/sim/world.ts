@@ -60,8 +60,13 @@ const GROUND = new Set(['s', 'g', 'j', 'k'].map((c) => c.charCodeAt(0)));
 const GRASS = 'g'.charCodeAt(0);
 const JUNGLE = 'j'.charCodeAt(0);
 const ROCK = 'k'.charCodeAt(0);
-/** Clearing a jungle tile to build on it. */
+/** Clearing a jungle tile to build on it (or with the bulldozer). */
 export const JUNGLE_CLEAR_COST = 150;
+/** Breaking up rock with the bulldozer. */
+export const ROCK_CLEAR_COST = 400;
+/** Moving a building costs this share of what was spent on it (at least MIN_MOVE_COST). */
+export const MOVE_SHARE = 0.1;
+export const MIN_MOVE_COST = 100;
 /** Height of one terrain level in tiles (used by the renderer too). */
 export const LEVEL_HEIGHT = 0.45;
 const PLOT_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -436,8 +441,8 @@ export class World {
 
   // ---------- buildings ----------
 
-  canPlaceBuilding(kind: BuildingKind, x: number, y: number, rot: Rotation): Result {
-    const gate = this.gate?.(kind);
+  canPlaceBuilding(kind: BuildingKind, x: number, y: number, rot: Rotation, moving?: Building): Result {
+    const gate = moving ? null : this.gate?.(kind);
     if (gate && !gate.ok) return gate;
     const tiles = this.footprintTiles(kind, x, y, rot);
     const level = this.heightAt(x, y);
@@ -448,7 +453,8 @@ export class World {
       if (this.terrain[this.idx(t.x, t.y)] === ROCK) return fail('Too rocky to build');
       if (this.heightAt(t.x, t.y) !== level) return fail('Needs flat ground');
       if (this.isPath(t.x, t.y)) return fail('Blocked by a path');
-      if (this.buildingAt(t.x, t.y)) return fail('Blocked by a building');
+      const other = this.buildingAt(t.x, t.y);
+      if (other && other !== moving) return fail('Blocked by a building');
     }
     const def = BUILDINGS[kind];
     // Decor stands anywhere on your land: it doesn't need a path of its own.
@@ -456,7 +462,66 @@ export class World {
     if (def.decor?.sand && !tiles.every((t) => this.terrainAt(t.x, t.y) === 's' || !this.layout.terrain)) return fail('Goes on the sand');
     if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => this.isShore(t.x + dx, t.y + dy))))
       return fail('Must be on the shore');
-    if (this.money < this.buildCost(kind, x, y, rot)) return fail('Not enough coins');
+    const cost = moving ? this.moveCost(moving.id) + this.buildCost(kind, x, y, rot) - BUILDINGS[kind].cost : this.buildCost(kind, x, y, rot);
+    if (this.money < cost) return fail('Not enough coins');
+    return OK;
+  }
+
+  // ---------- moving and bulldozing (Pass 5) ----------
+
+  moveCost(id: number): number {
+    const b = this.buildingsById.get(id);
+    return b ? Math.max(MIN_MOVE_COST, Math.round((investedIn(b) * MOVE_SHARE) / 10) * 10) : 0;
+  }
+
+  canMoveBuilding(id: number, x: number, y: number, rot: Rotation): Result {
+    const b = this.buildingsById.get(id);
+    if (!b) return fail('No building there');
+    if (BUILDINGS[b.kind].fixed) return fail('This one stays where it is');
+    return this.canPlaceBuilding(b.kind, x, y, rot, b);
+  }
+
+  /** Pick a building up and put it down elsewhere, keeping its floors and wear. Its route is dropped. */
+  moveBuilding(id: number, x: number, y: number, rot: Rotation): Result {
+    const check = this.canMoveBuilding(id, x, y, rot);
+    if (!check.ok) return check;
+    const b = this.buildingsById.get(id)!;
+    this.money -= this.moveCost(id) + this.buildCost(b.kind, x, y, rot) - BUILDINGS[b.kind].cost;
+    for (const t of this.footprintTiles(b.kind, b.x, b.y, b.rot)) this.occ[this.idx(t.x, t.y)] = 0;
+    b.x = x;
+    b.y = y;
+    b.rot = rot;
+    for (const t of this.footprintTiles(b.kind, x, y, rot)) {
+      const i = this.idx(t.x, t.y);
+      this.occ[i] = b.id;
+      if (this.terrain[i] === JUNGLE) this.terrain[i] = GRASS;
+    }
+    this.routesByHub.delete(id);
+    this.emit();
+    return OK;
+  }
+
+  /** Bulldozing nature: jungle and rock become grass on land you own (landmarks stay). */
+  clearCost(x: number, y: number): number {
+    const t = this.terrainAt(x, y);
+    return t === 'j' ? JUNGLE_CLEAR_COST : t === 'k' ? ROCK_CLEAR_COST : 0;
+  }
+
+  canClear(x: number, y: number): Result {
+    if (!this.isLand(x, y)) return fail('Buy this land first');
+    const t = this.terrainAt(x, y);
+    if (t !== 'j' && t !== 'k') return fail('Nothing to clear');
+    if (this.landmarks.some((l) => l.x === x && l.y === y)) return fail('That’s a landmark: it stays');
+    if (this.money < this.clearCost(x, y)) return fail('Not enough coins');
+    return OK;
+  }
+
+  clearNature(x: number, y: number): Result {
+    const check = this.canClear(x, y);
+    if (!check.ok) return check;
+    this.money -= this.clearCost(x, y);
+    this.terrain[this.idx(x, y)] = GRASS;
+    this.emit();
     return OK;
   }
 
@@ -653,12 +718,13 @@ export class World {
     return OK;
   }
 
-  /** Demolish whatever is on a tile (building first, then path). */
+  /** Bulldoze whatever is on a tile: a building, then a path, then jungle or rock. */
   demolishAt(x: number, y: number): Result {
     const b = this.buildingAt(x, y);
-    if (b) return this.removeBuilding(b.id);
+    if (b) return BUILDINGS[b.kind].fixed ? fail('This one stays where it is') : this.removeBuilding(b.id);
     if (this.isPath(x, y)) return this.removePath(x, y);
-    return fail('Nothing to demolish');
+    if (this.terrainAt(x, y) === 'j' || this.terrainAt(x, y) === 'k') return this.clearNature(x, y);
+    return fail('Nothing to bulldoze');
   }
 
   /** Path tile indices reachable from the dock. */

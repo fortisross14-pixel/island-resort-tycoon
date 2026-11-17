@@ -165,7 +165,13 @@ export class AppealMap {
 
 export type MaintenanceLevel = 'low' | 'normal' | 'high';
 export const MAINTENANCE_LEVELS: MaintenanceLevel[] = ['low', 'normal', 'high'];
-export const MAINTENANCE_NAMES: Record<MaintenanceLevel, string> = { low: 'Low', normal: 'Normal', high: 'High' };
+export const MAINTENANCE_NAMES: Record<MaintenanceLevel, string> = { low: 'Low', normal: 'Medium', high: 'High' };
+/** What each level means for the resort, in words (no numbers on purpose). */
+export const MAINTENANCE_EFFECT: Record<MaintenanceLevel, string> = {
+  low: 'Rooms and venues wear out fast. Cheaper upkeep, but you will repair often.',
+  normal: 'Rooms and venues age slowly. A repair now and then.',
+  high: 'Everything stays like new for years. Upkeep costs more.',
+};
 /** Change to the monthly upkeep bill: normal is what upkeep already covers. */
 export const MAINTENANCE_COST: Record<MaintenanceLevel, number> = { low: -0.3, normal: 0, high: 0.6 };
 /** How fast things wear at each level. */
