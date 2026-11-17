@@ -132,7 +132,7 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 .hint.show { display: block; }
 .toast {
-  top: calc(env(safe-area-inset-top) + 58px);
+  top: calc(env(safe-area-inset-top) + 92px);
   background: var(--bad);
   color: #fff;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
@@ -482,3 +482,77 @@ button:disabled { cursor: default; opacity: 0.45; }
 .card.topic.done { background: #f1faf4; }
 .card.topic.locked { opacity: 0.6; }
 .card.topic.locked::after { content: none; }
+
+/* ---------- scenarios (Pass 1) ---------- */
+.goals-pill {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 52px);
+  right: var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(20, 60, 70, 0.12);
+  pointer-events: auto;
+}
+.goals-pill[hidden] { display: none; }
+.goals-pill .obj { color: var(--ink-soft); }
+.goals-panel {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 88px);
+  right: var(--gutter);
+  width: 300px;
+  max-width: calc(100% - 2 * var(--gutter));
+  max-height: calc(100% - 340px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 18px;
+  padding: 10px 12px 12px;
+  box-shadow: 0 8px 24px rgba(20, 60, 70, 0.18);
+  pointer-events: auto;
+  font-size: 12px;
+  font-weight: 600;
+}
+.goals-panel[hidden] { display: none; }
+.goals-panel header { display: flex; justify-content: space-between; align-items: center; }
+.goals-panel header b { font-size: 15px; }
+.goals-panel .x { background: transparent; font-size: 15px; padding: 2px 6px; }
+.goals-panel h4 { margin: 10px 0 4px; font-size: 13px; }
+.goals-panel h4 small { color: var(--good); font-weight: 700; }
+.goals-panel ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.goals-panel li { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); }
+.goals-panel li.ok { color: #1f8a50; }
+.goals-panel em { font-style: normal; white-space: nowrap; }
+.goals-panel .objectives li { display: grid; grid-template-columns: 1fr auto; }
+.goals-panel .objectives .bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: rgba(35, 64, 74, 0.1); overflow: hidden; }
+.goals-panel .objectives .bar i { display: block; height: 100%; background: var(--good); }
+.goals-panel .coin-icon { width: 10px; height: 10px; display: inline-block; vertical-align: -1px; }
+.tier.won h4 { color: #1f8a50; }
+.offer { margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: #fff6e0; border: 1px solid #f2d38a; }
+.offer div { display: flex; gap: 8px; margin-top: 8px; }
+.offer button { padding: 7px 14px; border-radius: 999px; font-weight: 800; background: #fff; border: 1px solid var(--panel-edge); }
+.offer [data-accept] { background: var(--good); color: #fff; border-color: var(--good); }
+.newgame .choices { display: grid; gap: 10px; }
+.choice {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 2px solid var(--panel-edge);
+  font-weight: 600;
+}
+.choice:hover { border-color: var(--accent); }
+.choice b { font-size: 16px; font-weight: 800; }
+.choice ul { margin: 2px 0; padding-left: 0; list-style: none; font-size: 12px; color: var(--ink-soft); }
+.choice small { color: var(--ink-soft); }
+.report .cancel { display: block; margin: 10px auto 0; background: transparent; color: var(--ink-soft); font-weight: 700; text-decoration: underline; }
+.certificate { text-align: center; }
+.certificate .lines { justify-items: center; }

@@ -5,6 +5,8 @@ export interface ReportHandlers {
   onStartDay(): void;
   /** Tapped a review: show where it happened. */
   onReview(review: Review): void;
+  /** Answer the investor's rescue offer. */
+  onOffer(accept: boolean): void;
 }
 
 export function starsText(n: number): string {
@@ -50,6 +52,8 @@ export class NightReportView {
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
       if (t.closest('[data-start]')) return this.h.onStartDay();
+      if (t.closest('[data-accept]')) return this.h.onOffer(true);
+      if (t.closest('[data-decline]')) return this.h.onOffer(false);
       const rv = t.closest<HTMLElement>('[data-review]');
       if (rv && this.report) {
         const review = this.report.reviews.find((r) => r.id === Number(rv.dataset.review));
@@ -103,6 +107,17 @@ export class NightReportView {
             ${r.worst ? `<p class="moment bad">▼ ${r.worst}</p>` : ''}
           </div>
         </div>
+        ${
+          r.offer
+            ? `<div class="offer"><b>An investor calls.</b> After three days in the red, they offer <b>${coin}${r.offer.cash.toLocaleString('en-US')}</b> now for <b>${Math.round(r.offer.share * 100)}%</b> of your income for ${r.offer.days} days.
+              <div><button data-accept>Accept</button><button data-decline>No thanks</button></div></div>`
+            : ''
+        }
+        ${
+          r.objectives
+            ? `<h3>Today’s goals</h3><ul class="lines">${r.objectives.map((o) => `<li><span>${o.done ? '✓' : '✗'} ${o.label}</span></li>`).join('')}</ul>`
+            : ''
+        }
         <h3>Reviews</h3>
         <ul class="reviews">${reviews}</ul>
         <button class="start" data-start>Start day ${r.day + 1} ▸</button>

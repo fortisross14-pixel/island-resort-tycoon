@@ -21,6 +21,7 @@ import {
 import { PathGraph, UNREACHABLE } from './pathGraph';
 import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './research';
 import { rating, reviewText, starsFor, type Memory, type Review } from './reviews';
+import { Campaign, type CampaignState } from './scenario';
 import { Rng } from './rng';
 import type { Building, Result, Tile, World } from './world';
 import type { BuildingKind } from './buildings';
@@ -214,7 +215,27 @@ export interface NightReport {
   worst: string | null;
   nextArrivals: number;
   researchPoints: number;
+  /** Today's objectives and whether each was done (scenarios only). */
+  objectives?: { label: string; done: boolean }[];
+  /** An investor's rescue offer after three days in the red. */
+  offer: InvestorOffer | null;
 }
+
+/** GDD: "three red days in a row trigger a rescue offer from an investor (cash in exchange for a share of revenue)". */
+export interface InvestorOffer {
+  cash: number;
+  /** Share of each day's income (rooms and venues) paid to the investor. */
+  share: number;
+  days: number;
+}
+
+export interface Investor {
+  share: number;
+  daysLeft: number;
+}
+
+/** Days in the red before the investor calls. */
+export const RED_DAYS_FOR_OFFER = 3;
 
 /** Live state of a food venue (M4). */
 export interface Venue {
@@ -228,7 +249,11 @@ export interface Venue {
 }
 
 export interface SimSnapshot {
-  version: 5;
+  version: 6;
+  campaign: CampaignState | null;
+  redDays: number;
+  investor: Investor | null;
+  offer: InvestorOffer | null;
   research: ResearchState;
   progression: boolean;
   reviews: Review[];
@@ -298,6 +323,13 @@ export class Sim {
   readonly research = new Research();
   /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
   progression = false;
+  /** The scenario being played, or null for sandbox and tests. */
+  campaign: Campaign | null = null;
+  /** Days in a row that ended with a loss. */
+  redDays = 0;
+  investor: Investor | null = null;
+  /** An offer waiting for an answer (also shown on the night report). */
+  offer: InvestorOffer | null = null;
   private nextReviewId = 1;
   /** Front Desk behaviour: place arrivals automatically (scores AUTO_PENALTY lower). */
   autoCheckIn = false;
@@ -492,6 +524,7 @@ export class Sim {
 
     this.stepFerry(dt);
     for (const g of this.guests) this.stepGuest(g, dt);
+    this.campaign?.tick(dt);
     if (this.guests.length > MAX_GUESTS * 2) this.guests = this.guests.filter((g) => g.state !== 'gone');
   }
 
@@ -529,6 +562,19 @@ export class Sim {
     }
     if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
     if (t.supplies) costs.push({ buildingId: null, name: 'Supplies', amount: -t.supplies, detail: '30% of food sales' });
+    let investorCut = 0;
+    if (this.investor) {
+      investorCut = Math.round((t.roomIncome + t.spending) * this.investor.share);
+      this.world.earn(-investorCut);
+      this.investor.daysLeft--;
+      costs.push({
+        buildingId: null,
+        name: 'Investor share',
+        amount: -investorCut,
+        detail: `${Math.round(this.investor.share * 100)}% of income, ${this.investor.daysLeft} days left`,
+      });
+      if (this.investor.daysLeft <= 0) this.investor = null;
+    }
 
     const offices = this.world.buildings.filter((b) => b.kind === 'researchOffice').length;
     if (offices) this.addResearch(offices * OFFICE_POINTS);
@@ -553,7 +599,7 @@ export class Sim {
       day: this.day,
       income,
       costs,
-      profit: t.roomIncome + t.spending - t.supplies - t.upkeep,
+      profit: t.roomIncome + t.spending - t.supplies - t.upkeep - investorCut,
       stats: { ...t },
       checkingOut,
       reviews,
@@ -563,7 +609,14 @@ export class Sim {
       worst: this.worstMoment(),
       nextArrivals: arrivalsForDay(this.day + 1, this.rating),
       researchPoints: t.research,
+      offer: null,
     };
+    // Bankruptcy is never instant: after three red days an investor offers a lifeline.
+    this.redDays = report.profit < 0 ? this.redDays + 1 : 0;
+    if (this.redDays >= RED_DAYS_FOR_OFFER && !this.investor && !this.offer)
+      this.offer = { cash: 8000 + 2000 * this.world.plotsBought, share: 0.15, days: 20 };
+    report.offer = this.offer;
+    this.campaign?.onNight(report);
     this.emit({ type: 'night', report });
     if (this.pauseAtNight) this.night = report;
     else this.startDay();
@@ -586,6 +639,21 @@ export class Sim {
     if (worst) return `${worst.lost} guests walked away from the ${worst.name}`;
     if (t.roomIncome + t.spending < t.upkeep + t.supplies) return 'Costs were higher than income';
     return null;
+  }
+
+  acceptOffer(): boolean {
+    const o = this.offer;
+    if (!o) return false;
+    this.world.earn(o.cash);
+    this.investor = { share: o.share, daysLeft: o.days };
+    this.offer = null;
+    this.redDays = 0;
+    return true;
+  }
+
+  declineOffer(): void {
+    this.offer = null;
+    this.redDays = 0;
   }
 
   /** Close the night report and start the next morning. */
@@ -620,7 +688,14 @@ export class Sim {
       }
       if (g.state === 'inside' && g.timer >= OVERNIGHT) g.timer = this.rng.range(0, 3);
     }
+    this.campaign?.onMorning();
     this.emit({ type: 'newDay', day: this.world.day, yesterday });
+  }
+
+  /** Start a scenario (or sandbox with null) on the current world. */
+  startScenario(id: string | null): void {
+    this.campaign?.dispose();
+    this.campaign = id ? new Campaign(this, id) : null;
   }
 
   // ---------- reviews (M5) ----------
@@ -1237,7 +1312,11 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 5,
+      version: 6,
+      campaign: this.campaign ? this.campaign.snapshot() : null,
+      redDays: this.redDays,
+      investor: this.investor ? { ...this.investor } : null,
+      offer: this.offer ? { ...this.offer } : null,
       research: this.research.snapshot(),
       progression: this.progression,
       reviews: structuredClone(this.reviews),
@@ -1255,7 +1334,12 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 5) throw new Error('Incompatible save');
+    if (s.version !== 6) throw new Error('Incompatible save');
+    this.campaign?.dispose();
+    this.campaign = s.campaign ? new Campaign(this, s.campaign.scenario, structuredClone(s.campaign)) : null;
+    this.redDays = s.redDays;
+    this.investor = s.investor ? { ...s.investor } : null;
+    this.offer = s.offer ? { ...s.offer } : null;
     this.research.restore(s.research);
     this.progression = s.progression;
     this.reviews = structuredClone(s.reviews);
@@ -1275,7 +1359,11 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 5,
+      version: 6,
+      campaign: null,
+      redDays: 0,
+      investor: null,
+      offer: null,
       research: { points: 0, done: [] },
       progression: this.progression,
       reviews: [],

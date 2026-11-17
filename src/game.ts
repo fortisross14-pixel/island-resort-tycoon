@@ -6,6 +6,8 @@ import { CoinPops } from './render/coinPops';
 import { FerryView, GuestView } from './render/guestView';
 import { InfoPanel } from './ui/panel';
 import { NightReportView } from './ui/report';
+import { GoalsView, NewGameDialog, certificateHtml, type NewGameChoice } from './ui/goals';
+import { MEDAL_NAMES, SCENARIOS } from './sim/scenario';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
 import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
@@ -60,6 +62,9 @@ export class Game {
   private coinPops: CoinPops;
   private panel: InfoPanel;
   private report: NightReportView;
+  private goals: GoalsView;
+  private newGame: NewGameDialog;
+  private certificate: HTMLElement;
   private speed: Speed = 1;
   private tickAcc = 0;
   private sinceSave = 0;
@@ -82,9 +87,11 @@ export class Game {
     const { save, discarded } = loadSave();
     this.world = save ? World.fromSnapshot(save.world) : World.newGame();
     this.sim = new Sim(this.world);
+    let simLoaded = false;
     if (save?.sim) {
       try {
         this.sim.restore(save.sim);
+        simLoaded = true;
       } catch {
         this.sim.reset();
       }
@@ -110,9 +117,13 @@ export class Game {
     });
     this.panel = new InfoPanel(hudRoot, this.sim);
     this.sim.pauseAtNight = true;
-    this.sim.progression = true;
     this.report = new NightReportView(hudRoot, {
       onStartDay: () => this.startDay(),
+      onOffer: (accept) => {
+        if (accept && this.sim.acceptOffer()) this.hud.toast('Investor on board: coins added', 'good');
+        else this.sim.declineOffer();
+        if (this.sim.night) this.report.show({ ...this.sim.night, offer: null });
+      },
       onReview: (rv) => {
         const b = this.world.buildings.find((x) => x.id === rv.buildingId);
         if (!b) return;
@@ -122,6 +133,21 @@ export class Game {
       },
     });
     if (this.sim.night) this.report.show(this.sim.night);
+    this.goals = new GoalsView(hudRoot);
+    this.newGame = new NewGameDialog(hudRoot, (c) => this.startNewGame(c));
+    this.certificate = document.createElement('div');
+    this.certificate.className = 'report-backdrop';
+    this.certificate.hidden = true;
+    this.certificate.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-keep]')) this.certificate.hidden = true;
+      if (t.closest('[data-new]')) {
+        this.certificate.hidden = true;
+        this.newGame.show(true);
+      }
+    });
+    hudRoot.appendChild(this.certificate);
+    this.attachCampaign();
     this.sim.on((e) => this.onSimEvent(e));
     this.world.onMoney(() => this.onMoneyChange());
     this.stage.onFrame((dt) => this.frame(dt));
@@ -131,6 +157,10 @@ export class Game {
     this.setTool({ type: 'none' });
     this.bindInput(canvas);
     this.updateLocks();
+    if (!simLoaded) {
+      this.setSpeed(0);
+      this.newGame.show(false);
+    }
     if (discarded) this.hud.toast('The island is bigger now: an old prototype save was replaced', 'info');
   }
 
@@ -163,6 +193,7 @@ export class Game {
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     this.hud.setRating(this.sim.rating);
+    this.goals.update(performance.now());
     this.hud.setResearch(this.sim.research.points, this.sim.researchNodes);
     this.updateLocks();
     const queue = this.sim.queue;
@@ -384,15 +415,49 @@ export class Game {
   }
 
   private newIsland(): void {
-    if (!window.confirm('Start a new island? Your current island will be lost.')) return;
-    this.world.restore(World.newGame().snapshot());
+    this.newGame.show(true);
+  }
+
+  /** Start a scenario or the sandbox on a fresh island. */
+  private startNewGame(choice: NewGameChoice): void {
+    const scenario = 'scenario' in choice ? SCENARIOS.find((x) => x.id === choice.scenario) : undefined;
+    this.world.restore(World.newGame(scenario ? scenario.startMoney : 50000).snapshot());
     this.view.frameStart();
     this.sim.reset();
+    this.sim.progression = !!scenario;
+    this.sim.startScenario(scenario ? scenario.id : null);
+    this.attachCampaign();
     this.updateLocks();
     this.report.hide();
+    this.certificate.hidden = true;
     this.history.clear();
     this.setTool({ type: 'none' });
     this.onWorldChange();
+    this.setSpeed(1);
+    this.save();
+    this.hud.toast(scenario ? `${scenario.name}: build rooms and paths before the 08:00 ferry` : 'Sandbox: everything is unlocked', 'info');
+  }
+
+  /** Listen to the current scenario for medals, objectives and the end. */
+  private attachCampaign(): void {
+    const c = this.sim.campaign;
+    this.goals.setCampaign(c);
+    if (!c) return;
+    c.on((e) => {
+      switch (e.type) {
+        case 'objectiveDone': {
+          const r = e.objective.reward;
+          return this.hud.toast(`Goal done: ${e.objective.label} · ${r.coins ? `+${r.coins} coins` : `+${r.research} research`}`, 'good');
+        }
+        case 'medal':
+          return this.hud.toast(`${MEDAL_NAMES[e.tier]} medal won!`, 'good');
+        case 'finished':
+          this.certificate.innerHTML = certificateHtml(c);
+          this.certificate.hidden = false;
+          this.save();
+          return;
+      }
+    });
   }
 
   private onMoneyChange(): void {
@@ -586,6 +651,7 @@ export class Game {
         e.preventDefault();
         return this.undo();
       }
+      if (this.newGame.open || !this.certificate.hidden) return;
       if (e.key === 'Enter' && this.report.open) return this.startDay();
       if (e.key === ' ') {
         e.preventDefault();

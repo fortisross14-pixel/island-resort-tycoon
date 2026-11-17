@@ -4,7 +4,7 @@ A premium mobile tycoon game: grow a tiny island into a five-star resort, check 
 hand, and watch them walk your paths and spend money.
 
 This repository holds the proof of concept. The plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
-**M1–M5 are done:** island and construction, clock and ferry, check-in, needs and spending, and the nightly accounts, reviews and star rating. Pass 1 (depth) is under way: a bigger island with land plots and the tier-1 buildings are in; see [docs/CATALOGUE.md](docs/CATALOGUE.md). Then come the balance and graphics/GUI passes.
+**M1–M5 are done:** island and construction, clock and ferry, check-in, needs and spending, and the nightly accounts, reviews and star rating. Pass 1 (depth) is under way: a bigger island with land plots, tier-1 and tier-2 buildings, research, and scenario 1 with medals and daily goals are in; see [docs/CATALOGUE.md](docs/CATALOGUE.md). Then come the balance and graphics/GUI passes.
 Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/
 
 ![M3: dragging a backpacker onto a room shows the match score](docs/m3.png)
