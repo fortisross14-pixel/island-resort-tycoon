@@ -89,7 +89,7 @@ export class WorldView {
     slab.receiveShadow = true;
     s.add(slab);
 
-    // Dock: a pier from the landing tile out past the beach, with a moored boat.
+    // Dock: a pier from the landing tile out past the beach (the ferry is FerryView).
     const d = this.world.dock;
     const pier = new THREE.Group();
     const planks = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.08, 3.2), mat(PALETTE.wood));
@@ -105,17 +105,6 @@ export class WorldView {
     pier.position.set(d.x + 0.5, -0.02, d.y + 1);
     s.add(pier);
 
-    const boat = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.3, 2.0), mat(PALETTE.white));
-    hull.position.y = 0.0;
-    hull.castShadow = true;
-    boat.add(hull);
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.8), mat(PALETTE.roofTeal));
-    cabin.position.set(0, 0.32, -0.15);
-    cabin.castShadow = true;
-    boat.add(cabin);
-    boat.position.set(d.x + 1.6, -0.28, d.y + 3.6);
-    s.add(boat);
 
     // Palms on the beach rim, outside the buildable grid.
     const spots: Array<[number, number, number]> = [

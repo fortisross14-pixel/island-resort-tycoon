@@ -15,6 +15,8 @@ export class Stage {
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
   private needsRender = true;
+  private frameHooks: Array<(dt: number) => boolean> = [];
+  private lastFrame = 0;
   /** World units visible vertically at zoom 1. */
   private viewHeight = 15;
   private bounds = { minX: -4, maxX: 14, minZ: -4, maxZ: 14 };
@@ -50,7 +52,10 @@ export class Stage {
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
-    const loop = () => {
+    const loop = (now: number) => {
+      const dt = this.lastFrame ? Math.min((now - this.lastFrame) / 1000, 0.25) : 0;
+      this.lastFrame = now;
+      for (const hook of this.frameHooks) if (hook(dt)) this.needsRender = true;
       if (this.needsRender) {
         this.needsRender = false;
         this.renderer.render(this.scene, this.camera);
@@ -58,6 +63,11 @@ export class Stage {
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
+  }
+
+  /** Run every animation frame with the real seconds elapsed; return true to draw this frame. */
+  onFrame(hook: (dt: number) => boolean): void {
+    this.frameHooks.push(hook);
   }
 
   setBounds(minX: number, maxX: number, minZ: number, maxZ: number): void {

@@ -13,8 +13,8 @@ unit tested and a playtest harness can drive it headless in M6.
 | # | Milestone | Status |
 |---|-----------|--------|
 | M1 | Island and construction | **Done** |
-| M2 | Clock, ferry and walkers | Next |
-| M3 | Check-in | Planned |
+| M2 | Clock, ferry and walkers | **Done** |
+| M3 | Check-in | Next |
 | M4 | Needs and spending | Planned |
 | M5 | Economy, night report and reviews | Planned |
 | M6 | Playtest build | Planned |
@@ -45,17 +45,27 @@ layout rules already push back.
 Deferred from the GDD map section: moving buildings (free on day 1, 25% after), the
 appeal/nuisance heat map, land plots and stacked floors (vertical slice).
 
-## M2 — Clock, ferry and walkers
+## M2 — Clock, ferry and walkers ✅
 
 Goal: the island comes alive.
 
-- Day clock (about 3–4 real minutes per day) with pause, 1×, 2× and 4×
-- Fixed-tick simulation separate from drawing (GDD risk: many guests on phones)
-- Path graph: paths as nodes and edges, cached distances from each building's access tiles
-- The morning ferry: the boat sails in and docks, and guests step off onto the pier
-- Guest agents walking tile by tile along paths to a target building, then back
-- Guests drawn as simple low-poly figures, capped at about 200 visible
-- Continuous rendering while the clock runs; render-on-demand while paused
+- [x] Day clock from 07:00 to 23:00 (200 real seconds at 1×), with pause, 1×, 2× and 4× (Space pauses)
+- [x] Fixed 20 Hz simulation tick, separate from drawing; positions interpolated between ticks
+- [x] Path graph: BFS distance fields per goal (building access tiles, dock, tile), cached until the map changes
+- [x] The morning ferry: sails in at 08:00, unloads, boards anyone waiting, leaves from 09:30
+- [x] Arrivals grow day by day (4 + 2 × day, capped at 20)
+- [x] Guests walk tile by tile on paths: off the pier, to their room, to food (closer is likelier), wandering, resting
+- [x] Evenings: everyone heads to their room at 21:00; next morning, guests whose stay is over walk to the dock and leave
+- [x] Guests re-route when you edit the map; if their room is demolished they head home
+- [x] Instanced low-poly guests (two draw calls), with a walking bob; tap one to see who they are and what they think
+- [x] Continuous rendering while the clock runs; render-on-demand while paused
+- [x] Day, time and guest count in the top bar; toasts for the ferry, full rooms and each new day
+- [x] Saves include the clock, ferry and guests (M1 saves still load)
+- [x] Deploys to GitHub Pages from CI (`.github/workflows/deploy.yml`)
+
+Placeholder until M3: arriving guests are checked in automatically to the free room nearest the
+dock, and anyone without a room is turned away. The night between 23:00 and 07:00 is skipped
+until the night report (M5).
 
 ## M3 — Check-in
 

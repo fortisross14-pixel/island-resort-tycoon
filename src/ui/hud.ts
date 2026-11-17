@@ -9,7 +9,11 @@ export interface HudHandlers {
   onUndo(): void;
   onCancel(): void;
   onNewIsland(): void;
+  onSpeed(speed: Speed): void;
 }
+
+/** 0 = paused. */
+export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
   path: '<svg viewBox="0 0 32 32"><path d="M6 28 C 10 18, 22 20, 26 4" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>',
@@ -31,16 +35,21 @@ export class Hud {
   private rotateBtn: HTMLButtonElement;
   private demolishBtn: HTMLButtonElement;
   private cards = new Map<TrayItem, HTMLButtonElement>();
+  private dayEl: HTMLElement;
+  private timeEl: HTMLElement;
+  private guestsEl: HTMLElement;
+  private speedBtns: HTMLButtonElement[];
   private toastTimer = 0;
 
   constructor(root: HTMLElement, h: HudHandlers) {
     root.innerHTML = `
       <header class="topbar">
         <div class="stat coins" title="Coins"><span class="coin-icon"></span><b data-coins>0</b></div>
-        <div class="stat" title="Day and time">Day <b>1</b> · <span>08:00</span></div>
+        <div class="stat" title="Day and time"><span class="lbl">Day </span><b data-day>1</b> · <span data-time>07:00</span></div>
+        <div class="stat guests" title="Guests on the island"><span class="guest-icon"></span><b data-guests>0</b></div>
         <div class="stat rating" title="Star rating (from M5)">☆☆☆☆☆</div>
-        <div class="speed" title="Speed controls arrive in M2">
-          <button disabled aria-label="Pause">❚❚</button><button disabled class="on">1×</button><button disabled>2×</button><button disabled>4×</button>
+        <div class="speed" title="Speed (Space pauses)">
+          <button data-speed="0" aria-label="Pause">❚❚</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button>
         </div>
         <button class="menu" data-new title="Start a new island" aria-label="New island">↺</button>
       </header>
@@ -63,6 +72,11 @@ export class Hud {
     this.undoBtn = q('[data-undo]');
     this.rotateBtn = q('[data-rotate]');
     this.demolishBtn = q('[data-demolish]');
+    this.dayEl = q('[data-day]');
+    this.timeEl = q('[data-time]');
+    this.guestsEl = q('[data-guests]');
+    this.speedBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-speed]')];
+    for (const b of this.speedBtns) b.addEventListener('click', () => h.onSpeed(Number(b.dataset.speed) as Speed));
 
     const tray = q<HTMLElement>('[data-tray]');
     const items: TrayItem[] = ['path', ...BUILDING_KINDS];
@@ -86,6 +100,18 @@ export class Hud {
     this.undoBtn.addEventListener('click', () => h.onUndo());
     q('[data-cancel]').addEventListener('click', () => h.onCancel());
     q('[data-new]').addEventListener('click', () => h.onNewIsland());
+  }
+
+  setClock(day: number, time: string, guests: number): void {
+    const d = String(day);
+    if (this.dayEl.textContent !== d) this.dayEl.textContent = d;
+    if (this.timeEl.textContent !== time) this.timeEl.textContent = time;
+    const g = String(guests);
+    if (this.guestsEl.textContent !== g) this.guestsEl.textContent = g;
+  }
+
+  setSpeed(speed: Speed): void {
+    for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.speed) === speed);
   }
 
   setCoins(n: number): void {
@@ -112,7 +138,7 @@ export class Hud {
     this.hintEl.classList.toggle('show', text.length > 0);
   }
 
-  toast(text: string, tone: 'bad' | 'info' = 'bad'): void {
+  toast(text: string, tone: 'bad' | 'info' | 'good' = 'bad'): void {
     this.toastEl.textContent = text;
     this.toastEl.dataset.tone = tone;
     this.toastEl.classList.add('show');

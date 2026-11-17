@@ -1,9 +1,11 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, footprint, type BuildingKind, type Rotation } from './sim/buildings';
 import { History } from './sim/history';
 import { World, manhattanSteps, type Tile, type WorldSnapshot } from './sim/world';
+import { GUEST_TYPES, Sim, TICK, type SimEvent, type SimSnapshot } from './sim/sim';
+import { FerryView, GuestView } from './render/guestView';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
-import { Hud, type TrayItem } from './ui/hud';
+import { Hud, type Speed, type TrayItem } from './ui/hud';
 
 type Tool =
   | { type: 'none' }
@@ -12,6 +14,13 @@ type Tool =
   | { type: 'demolish' };
 
 const SAVE_KEY = 'irt.save.v1';
+/** Real seconds between autosaves while the clock runs. */
+const AUTOSAVE_SECONDS = 5;
+
+interface SaveFile {
+  world: WorldSnapshot;
+  sim?: SimSnapshot;
+}
 /** Pointer travel (px) below which a press counts as a tap. */
 const TAP_SLOP = 8;
 
@@ -37,8 +46,15 @@ const HINTS: Record<Tool['type'], string> = {
 export class Game {
   readonly world: World;
   readonly history: History;
+  readonly sim: Sim;
   private stage: Stage;
   private view: WorldView;
+  private guestView: GuestView;
+  private ferryView: FerryView;
+  private speed: Speed = 1;
+  private tickAcc = 0;
+  private sinceSave = 0;
+  private turnedAwayToast = 0;
   private hud: Hud;
   private tool: Tool = { type: 'none' };
   private ptrs = new Map<number, Ptr>();
@@ -50,10 +66,21 @@ export class Game {
   private saveTimer = 0;
 
   constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement) {
-    this.world = loadWorld() ?? new World();
+    const save = loadSave();
+    this.world = save ? World.fromSnapshot(save.world) : new World();
+    this.sim = new Sim(this.world);
+    if (save?.sim) {
+      try {
+        this.sim.restore(save.sim);
+      } catch {
+        this.sim.reset();
+      }
+    }
     this.history = new History(this.world);
     this.stage = new Stage(canvas);
     this.view = new WorldView(this.stage, this.world);
+    this.guestView = new GuestView(this.stage, this.sim);
+    this.ferryView = new FerryView(this.stage, this.sim);
     this.hud = new Hud(hudRoot, {
       onTrayDown: (item, e) => this.onTrayDown(item, e),
       onRotate: () => this.rotate(),
@@ -61,11 +88,66 @@ export class Game {
       onUndo: () => this.undo(),
       onCancel: () => this.setTool({ type: 'none' }),
       onNewIsland: () => this.newIsland(),
+      onSpeed: (sp) => this.setSpeed(sp),
     });
+    this.sim.on((e) => this.onSimEvent(e));
+    this.stage.onFrame((dt) => this.frame(dt));
+    this.setSpeed(1);
     this.world.onChange(() => this.onWorldChange());
     this.onWorldChange();
     this.setTool({ type: 'none' });
     this.bindInput(canvas);
+  }
+
+  // ---------- clock ----------
+
+  setSpeed(sp: Speed): void {
+    this.speed = sp;
+    this.hud.setSpeed(sp);
+    this.stage.requestRender();
+  }
+
+  /** Per animation frame: advance the fixed-tick sim, then move the views. */
+  private frame(dt: number): boolean {
+    if (this.speed > 0) {
+      this.tickAcc += dt * this.speed;
+      let steps = 0;
+      while (this.tickAcc >= TICK && steps < 40) {
+        this.sim.step();
+        this.tickAcc -= TICK;
+        steps++;
+      }
+      if (steps === 40) this.tickAcc = 0; // tab was asleep: don't try to catch up
+      this.sinceSave += dt;
+      if (this.sinceSave >= AUTOSAVE_SECONDS) this.save();
+    }
+    const alpha = this.speed > 0 ? this.tickAcc / TICK : 1;
+    this.guestView.update(alpha, this.speed > 0 ? dt : 0);
+    this.ferryView.update(this.speed > 0 ? dt : 0);
+    this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
+    return this.speed > 0;
+  }
+
+  private onSimEvent(e: SimEvent): void {
+    switch (e.type) {
+      case 'ferryArriving':
+        return this.hud.toast('The morning ferry is coming in', 'info');
+      case 'ferryDocked':
+        return this.hud.toast(e.guests === 1 ? '1 guest arrived' : `${e.guests} guests arrived`, 'good');
+      case 'turnedAway': {
+        // One toast per ferry load, not one per guest.
+        const now = performance.now();
+        if (now - this.turnedAwayToast > 4000) this.hud.toast('No free room: guests are leaving. Build more rooms!');
+        this.turnedAwayToast = now;
+        return;
+      }
+      case 'newDay': {
+        const y = e.yesterday;
+        this.hud.toast(`Day ${e.day} · yesterday ${y.arrived} arrived, ${y.turnedAway} turned away`, 'info');
+        this.save();
+        return;
+      }
+    }
   }
 
   // ---------- tools ----------
@@ -95,6 +177,7 @@ export class Game {
   private newIsland(): void {
     if (!window.confirm('Start a new island? Your current island will be lost.')) return;
     this.world.restore(new World().snapshot());
+    this.sim.reset();
     this.history.clear();
     this.setTool({ type: 'none' });
     this.onWorldChange();
@@ -107,7 +190,12 @@ export class Game {
     // History commits after the edit that triggered this event, so read it next tick.
     queueMicrotask(() => this.hud.setUndo(this.history.canUndo));
     clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => saveWorld(this.world.snapshot()), 300);
+    this.saveTimer = window.setTimeout(() => this.save(), 300);
+  }
+
+  private save(): void {
+    this.sinceSave = 0;
+    writeSave({ world: this.world.snapshot(), sim: this.sim.snapshot() });
   }
 
   // ---------- previews ----------
@@ -193,7 +281,13 @@ export class Game {
     this.onWorldChange();
   }
 
-  private inspect(t: Tile): void {
+  private inspect(t: Tile, clientX: number, clientY: number): void {
+    const p = this.stage.groundAt(clientX, clientY);
+    const g = p && this.guestView.pick(p.x, p.z);
+    if (g) {
+      const stay = g.leaving ? 'heading home' : `${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} left`;
+      return this.hud.toast(`${GUEST_TYPES[g.type].name} · ${stay} · “${g.thought}”`, 'info');
+    }
     const b = this.world.buildingAt(t.x, t.y);
     if (b) this.hud.toast(`${BUILDINGS[b.kind].name} · built on day ${b.builtDay}`, 'info');
   }
@@ -252,6 +346,10 @@ export class Game {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         return this.undo();
+      }
+      if (e.key === ' ') {
+        e.preventDefault();
+        return this.setSpeed(this.speed === 0 ? 1 : 0);
       }
       switch (e.key.toLowerCase()) {
         case 'escape':
@@ -359,7 +457,7 @@ export class Game {
       return;
     }
     if (press === 'pan') {
-      if (tap && t && this.tool.type === 'none') this.inspect(t);
+      if (tap && t && this.tool.type === 'none') this.inspect(t, e.clientX, e.clientY);
       return;
     }
     if (press !== 'tool') return;
@@ -380,16 +478,21 @@ export class Game {
   }
 }
 
-function loadWorld(): World | null {
+function loadSave(): SaveFile | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? World.fromSnapshot(JSON.parse(raw) as WorldSnapshot) : null;
+    if (!raw) return null;
+    const data = JSON.parse(raw) as SaveFile | WorldSnapshot;
+    // M1 saves held just the world snapshot.
+    const save = 'world' in data ? data : { world: data };
+    World.fromSnapshot(save.world); // throws if the save doesn't fit this version
+    return save;
   } catch {
     return null;
   }
 }
 
-function saveWorld(s: WorldSnapshot): void {
+function writeSave(s: SaveFile): void {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(s));
   } catch {
