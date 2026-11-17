@@ -44,6 +44,10 @@ export interface VenueDef {
   basePrice: number;
   /** Secondary meter bonus, e.g. a snack is a bit of fun. */
   bonus?: Partial<Meters>;
+  /** Only these guest types use it (the Kids' Club is for families). */
+  only?: string[];
+  /** Priced per child (party size minus two adults) rather than per person. */
+  perChild?: boolean;
 }
 
 const RESTAURANT: VenueDef = {
@@ -71,6 +75,8 @@ export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   spa: { need: 'comfort', gain: 55, capacity: 4, service: 10, lineMax: 4, basePrice: 60, bonus: { rest: 25 } },
   boutique: { need: 'fun', gain: 30, capacity: 4, service: 5, lineMax: 3, basePrice: 50, bonus: { comfort: 10 } },
   diveShop: { need: 'fun', gain: 60, capacity: 4, service: 12, lineMax: 4, basePrice: 55 },
+  kidsClub: { need: 'fun', gain: 50, capacity: 6, service: 9, lineMax: 4, basePrice: 15, only: ['family'], perChild: true, bonus: { rest: 10 } },
+  nightclub: { need: 'fun', gain: 55, capacity: 14, service: 10, lineMax: 8, basePrice: 30, bonus: { hunger: 5 } },
 };
 
 /** Sim seconds a guest will stand in a line before walking off. */
@@ -92,11 +98,18 @@ export function priceOf(kind: BuildingKind, step: PriceStep): number {
 }
 
 /** Price multiple a guest type accepts without hesitation. */
-export const PRICE_TOLERANCE: Record<'backpacker' | 'couple', number> = { backpacker: 0.8, couple: 1.1 };
+export const PRICE_TOLERANCE: Record<string, number> = {
+  backpacker: 0.8,
+  couple: 1.1,
+  family: 0.95,
+  wellness: 1.35,
+  party: 1.05,
+  vip: 1.7,
+};
 
 /** Chance a guest buys at a price step, before checking their wallet. */
-export function buyChance(type: 'backpacker' | 'couple', step: PriceStep): number {
-  const over = Math.max(0, PRICE_STEPS[step].mult - PRICE_TOLERANCE[type]);
+export function buyChance(type: string, step: PriceStep): number {
+  const over = Math.max(0, PRICE_STEPS[step].mult - (PRICE_TOLERANCE[type] ?? 1));
   return Math.max(0.05, Math.min(0.97, 0.95 - over * 1.5));
 }
 

@@ -57,45 +57,127 @@ export const PATIENCE_SECONDS = 2 * SECONDS_PER_GAME_HOUR;
 /** Timer value meaning "inside until morning". */
 const OVERNIGHT = 1e9;
 
-export type GuestType = 'backpacker' | 'couple';
+export type GuestType = 'backpacker' | 'couple' | 'family' | 'wellness' | 'party' | 'vip';
 
 export interface GuestTypeDef {
   name: string;
-  /** People in the party; they share one room. */
-  size: 1 | 2;
+  /** People in the party, [min, max]; they share one room. */
+  size: [number, number];
   nights: [number, number];
-  /** Nightly budget in coins (charged in M5). */
+  /** Nightly budget in coins. */
   budget: [number, number];
   /** Coins the whole party will spend on the island per day. */
   spend: [number, number];
-  /** Room tier their budget expects (1 = Basic Rooms). */
+  /** Room tier their budget expects (1 = Basic Rooms … 4 = Suites). */
   tier: number;
   wishPool: Wish[];
   wishCount: [number, number];
+  /** Star rating before they start arriving (GDD "Unlocks" column). */
+  minStars: number;
+  /** Share of the ferry, before the rating shifts the mix. */
+  weight: number;
+  /** Venues they seek out, and venues they avoid (GDD "Loves" / "Hates"). */
+  likes: BuildingKind[];
+  dislikes: BuildingKind[];
+  /** Stay out until this time instead of heading in at 21:00. */
+  bedtime?: number;
+  /** Long walks put them off more than most (families). */
+  walkShy?: boolean;
+  /** A busy venue spoils it for them (VIPs). */
+  hatesCrowds?: boolean;
 }
 
 export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
   backpacker: {
     name: 'Backpacker',
-    size: 1,
+    size: [1, 1],
     nights: [1, 2],
     budget: [40, 70],
     spend: [35, 60],
     tier: 1,
     wishPool: ['snacks', 'shortWalk', 'bar'],
     wishCount: [1, 1],
+    minStars: 0,
+    weight: 1,
+    likes: ['snackBar', 'beachBar'],
+    dislikes: [],
   },
   couple: {
     name: 'Couple',
-    size: 2,
+    size: [2, 2],
     nights: [2, 4],
     budget: [90, 140],
     spend: [110, 170],
     tier: 2,
     wishPool: ['buffet', 'quiet', 'snacks', 'pool'],
     wishCount: [1, 2],
+    minStars: 0,
+    weight: 0.8,
+    likes: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant', 'spa'],
+    dislikes: ['kidsClub'],
+  },
+  family: {
+    name: 'Family',
+    size: [3, 4],
+    nights: [3, 5],
+    budget: [80, 130],
+    spend: [100, 160],
+    tier: 2,
+    wishPool: ['buffet', 'pool', 'kidsClub', 'shortWalk'],
+    wishCount: [1, 2],
+    minStars: 2,
+    weight: 0.35,
+    likes: ['buffet', 'pool', 'kidsClub'],
+    dislikes: ['nightclub'],
+    walkShy: true,
+  },
+  wellness: {
+    name: 'Wellness seeker',
+    size: [1, 1],
+    nights: [3, 7],
+    budget: [130, 200],
+    spend: [150, 240],
+    tier: 3,
+    wishPool: ['spa', 'gym', 'quiet'],
+    wishCount: [1, 2],
+    minStars: 3,
+    weight: 0.25,
+    likes: ['spa', 'gym', 'pool'],
+    dislikes: ['snackBar', 'nightclub'],
+  },
+  party: {
+    name: 'Party group',
+    size: [3, 3],
+    nights: [2, 3],
+    budget: [70, 110],
+    spend: [130, 200],
+    tier: 2,
+    wishPool: ['bar', 'nightclub'],
+    wishCount: [1, 2],
+    minStars: 3,
+    weight: 0.25,
+    likes: ['beachBar', 'nightclub'],
+    dislikes: [],
+    bedtime: 22 * 60 + 45,
+  },
+  vip: {
+    name: 'VIP',
+    size: [2, 2],
+    nights: [2, 3],
+    budget: [260, 400],
+    spend: [300, 500],
+    tier: 4,
+    wishPool: ['quiet', 'spa'],
+    wishCount: [1, 2],
+    minStars: 4,
+    weight: 0.12,
+    likes: ['italianRestaurant', 'seafoodRestaurant', 'asianRestaurant', 'spa', 'boutique'],
+    dislikes: ['snackBar', 'buffet'],
+    hatesCrowds: true,
   },
 };
+
+export const GUEST_TYPE_KEYS = Object.keys(GUEST_TYPES) as GuestType[];
 
 export interface Point {
   x: number;
@@ -121,7 +203,8 @@ export type GuestState = 'arriving' | 'queued' | 'walking' | 'inline' | 'inside'
 export interface Guest {
   id: number;
   type: GuestType;
-  size: 1 | 2;
+  /** People in the party. */
+  size: number;
   budget: number;
   tier: number;
   wishes: Wish[];
@@ -533,9 +616,18 @@ export class Sim {
     const t = this.today;
     const roomLines = new Map<number, NightLine>();
 
+    // Nightclubs are noisy after 22:00 (GDD): nearby rooms sleep badly, except party groups.
+    const clubs = this.world.buildings.filter((b) => b.kind === 'nightclub');
     for (const g of this.guests) {
       const room = g.roomId !== null ? this.building(g.roomId) : undefined;
       if (!room || g.leaving) continue;
+      if (g.type !== 'party') {
+        const club = clubs.find((c) => this.near(room, c, 3));
+        if (club) {
+          g.satisfaction = Math.max(0, g.satisfaction - 6);
+          this.remember(g, club.id, -10, 'the nightclub kept us up all night');
+        }
+      }
       const rate = this.roomRate(room);
       const paid = Math.min(rate, g.budget);
       if (rate > g.budget) {
@@ -686,7 +778,8 @@ export class Sim {
         g.roomId = null;
         g.thought = 'Time to go home.';
       }
-      if (g.state === 'inside' && g.timer >= OVERNIGHT) g.timer = this.rng.range(0, 3);
+      // The overnight timer ticks down from the moment they go to bed, so test against half of it.
+      if (g.state === 'inside' && g.timer > OVERNIGHT / 2) g.timer = this.rng.range(0, 3);
     }
     this.campaign?.onMorning();
     this.emit({ type: 'newDay', day: this.world.day, yesterday });
@@ -775,7 +868,7 @@ export class Sim {
   }
 
   private spawnGuest(): void {
-    const type: GuestType = this.rng.next() < coupleShare(this.rating) ? 'couple' : 'backpacker';
+    const type = this.pickGuestType();
     const def = GUEST_TYPES[type];
     const [lo, hi] = def.nights;
     const pool = [...def.wishPool];
@@ -787,7 +880,7 @@ export class Sim {
     const g: Guest = {
       id: this.nextGuestId++,
       type,
-      size: def.size,
+      size: this.rng.int(...def.size),
       budget: Math.round(this.rng.range(...def.budget) / 5) * 5,
       tier: def.tier,
       wishes,
@@ -825,6 +918,25 @@ export class Sim {
     g.wallet = this.dailySpend(g);
     this.guests.push(g);
     this.today.arrived++;
+  }
+
+  /**
+   * Who is on the ferry: the rating unlocks richer types (GDD) and shifts the mix
+   * from backpackers towards couples.
+   */
+  private pickGuestType(): GuestType {
+    const stars = this.rating;
+    const share = coupleShare(stars);
+    const weights = GUEST_TYPE_KEYS.map((t) => {
+      const d = GUEST_TYPES[t];
+      if (stars < d.minStars) return 0;
+      if (t === 'backpacker') return 1 - share;
+      if (t === 'couple') return share;
+      return d.weight;
+    });
+    let r = this.rng.next() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < weights.length; i++) if ((r -= weights[i]) <= 0) return GUEST_TYPE_KEYS[i];
+    return 'backpacker';
   }
 
   private dailySpend(g: Guest): number {
@@ -933,8 +1045,9 @@ export class Sim {
     if (goal.purpose === 'food') return this.arriveAtVenue(g, b);
     g.state = 'inside';
     g.insideId = b.id;
-    g.timer = goal.purpose === 'room' && this.minutes >= EVENING ? OVERNIGHT : this.rng.range(8, 14);
-    g.thought = g.timer >= OVERNIGHT ? 'Good night!' : 'A little rest.';
+    g.timer =
+      goal.purpose === 'room' && this.minutes >= (GUEST_TYPES[g.type].bedtime ?? EVENING) ? OVERNIGHT : this.rng.range(8, 14);
+    g.thought = g.timer > OVERNIGHT / 2 ? 'Good night!' : 'A little rest.';
   }
 
   // ---------- venues (M4) ----------
@@ -944,7 +1057,7 @@ export class Sim {
     const def = VENUES[b.kind];
     if (!def) return this.decide(g);
     const v = this.venue(b.id);
-    const price = priceOf(b.kind, v.price) * g.size;
+    const price = this.partyPrice(g, b, v);
     const name = BUILDINGS[b.kind].name;
     if (price > 0) {
       if (g.wallet < price) return this.walkAway(g, b, v, `Can’t afford the ${name}.`, 2);
@@ -962,6 +1075,13 @@ export class Sim {
     g.thought = `Waiting in line at the ${name}.`;
   }
 
+  /** What a party pays at a venue: per person, or per child at the Kids' Club. */
+  private partyPrice(g: Guest, b: Building, v: Venue): number {
+    const each = priceOf(b.kind, v.price);
+    const people = VENUES[b.kind]?.perChild ? Math.max(1, g.size - 2) : g.size;
+    return each * people;
+  }
+
   private walkAway(g: Guest, b: Building, v: Venue, thought: string, penalty: number): void {
     v.lostToday++;
     this.remember(g, b.id, -penalty * 2, thought.replace(/[.!]$/, '').replace(/^./, (c) => c.toLowerCase()));
@@ -973,7 +1093,8 @@ export class Sim {
 
   private serve(g: Guest, b: Building, v: Venue): void {
     const def = VENUES[b.kind]!;
-    const price = priceOf(b.kind, v.price) * g.size;
+    const price = this.partyPrice(g, b, v);
+    const crowded = v.serving + 1 > def.capacity / 2 || v.line.length > 0;
     v.serving++;
     v.visitsToday++;
     v.revenueToday += price;
@@ -996,6 +1117,19 @@ export class Sim {
     }
     // A bargain pleases; a steep price stings a little even when they pay it.
     let mood = price === 0 || v.price <= 2 ? 3 : -2;
+    const type = GUEST_TYPES[g.type];
+    if (type.likes.includes(b.kind)) {
+      mood += 3;
+      this.remember(g, b.id, 8, `we loved the ${name}`);
+    }
+    if (type.dislikes.includes(b.kind)) {
+      mood -= 4;
+      this.remember(g, b.id, -6, `the ${name} wasn’t for us`);
+    }
+    if (type.hatesCrowds && crowded) {
+      mood -= 4;
+      this.remember(g, b.id, -8, `the ${name} was far too crowded`);
+    }
     // Richer guests notice a budget venue (quality class below their tier).
     if (BUILDINGS[b.kind].quality < g.tier) {
       mood -= 2;
@@ -1141,7 +1275,8 @@ export class Sim {
       g.thought = 'My room is gone!';
       return this.plan(g, { kind: 'dock' });
     }
-    if (this.minutes >= EVENING) return this.plan(g, { kind: 'building', id: g.roomId, purpose: 'room' });
+    if (this.minutes >= (GUEST_TYPES[g.type].bedtime ?? EVENING))
+      return this.plan(g, { kind: 'building', id: g.roomId, purpose: 'room' });
 
     const options = this.options(g);
     let best = options[0];
@@ -1175,14 +1310,18 @@ export class Sim {
       if (d >= UNREACHABLE) continue;
       const v = this.venue(b.id);
       const deficit = 100 - m[def.need];
+      const type = GUEST_TYPES[g.type];
+      if (def.only && !def.only.includes(g.type)) continue;
       let u = Math.min(def.gain, deficit) * (deficit > 30 ? 1 : 0.3);
+      if (type.likes.includes(b.kind)) u *= 1.6;
+      if (type.dislikes.includes(b.kind)) u *= 0.15;
       for (const [n, add] of Object.entries(def.bonus ?? {})) u += Math.min(add ?? 0, 100 - m[n as keyof Meters]) * 0.5;
-      u *= 1 / (1 + d / 8);
+      u *= 1 / (1 + d / (GUEST_TYPES[g.type].walkShy ? 5 : 8));
       // The 12-tile rule is measured from their room's door.
       if (room && this.roomDistance(room, key, goals) > FAR_TILES) u *= FAR_FACTOR;
       u *= 1 / (1 + v.line.length / 2);
       // Price isn't known until they get there (GDD); only an empty wallet keeps them away.
-      if (g.wallet < priceOf(b.kind, v.price) * g.size) u = 0;
+      if (g.wallet < this.partyPrice(g, b, v)) u = 0;
       out.push({ goal: { kind: 'building', id: b.id, purpose: 'food' }, utility: u });
     }
 
@@ -1269,6 +1408,13 @@ export class Sim {
 
   private access(b: Building): Tile[] {
     return accessOf(this.world, b);
+  }
+
+  /** Footprints within `radius` tiles of each other (any direction). */
+  private near(a: Building, b: Building, radius: number): boolean {
+    const ta = this.world.footprintTiles(a.kind, a.x, a.y, a.rot);
+    const tb = this.world.footprintTiles(b.kind, b.x, b.y, b.rot);
+    return ta.some((p) => tb.some((q) => Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y)) <= radius));
   }
 
   private building(id: number): Building | undefined {

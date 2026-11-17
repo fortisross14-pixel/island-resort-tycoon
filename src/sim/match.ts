@@ -8,7 +8,7 @@ import type { Building, Tile, World } from './world';
  * HUD can preview a score for every room while a guest card is being dragged.
  */
 
-export type Wish = 'snacks' | 'buffet' | 'quiet' | 'shortWalk' | 'pool' | 'bar';
+export type Wish = 'snacks' | 'buffet' | 'quiet' | 'shortWalk' | 'pool' | 'bar' | 'kidsClub' | 'spa' | 'gym' | 'nightclub';
 
 export const WISHES: Record<Wish, { label: string; met: string; unmet: string }> = {
   snacks: { label: 'Snack Bar nearby', met: 'Snack Bar close by', unmet: 'No Snack Bar nearby' },
@@ -17,6 +17,10 @@ export const WISHES: Record<Wish, { label: string; met: string; unmet: string }>
   shortWalk: { label: 'Short walk from the dock', met: 'Close to the dock', unmet: 'Long walk from the dock' },
   pool: { label: 'Pool nearby', met: 'Pool close by', unmet: 'No pool nearby' },
   bar: { label: 'Beach Bar nearby', met: 'Beach Bar close by', unmet: 'No Beach Bar nearby' },
+  kidsClub: { label: 'Kids’ Club nearby', met: 'Kids’ Club close by', unmet: 'Nothing for the kids nearby' },
+  spa: { label: 'Spa nearby', met: 'Spa close by', unmet: 'No spa nearby' },
+  gym: { label: 'Gym nearby', met: 'Gym close by', unmet: 'No gym nearby' },
+  nightclub: { label: 'Nightclub nearby', met: 'Nightclub close by', unmet: 'No nightlife nearby' },
 };
 
 /** Room tier of a room building: its quality class (Basic 1, Standard 2, …). */
@@ -87,6 +91,14 @@ export function wishMet(paths: PathGraph, world: World, room: Building, wish: Wi
       return nearKind(paths, world, room, 'pool');
     case 'bar':
       return nearKind(paths, world, room, 'beachBar');
+    case 'kidsClub':
+      return nearKind(paths, world, room, 'kidsClub');
+    case 'spa':
+      return nearKind(paths, world, room, 'spa');
+    case 'gym':
+      return nearKind(paths, world, room, 'gym');
+    case 'nightclub':
+      return nearKind(paths, world, room, 'nightclub');
     case 'shortWalk':
       return doorDistance(paths, world, room, 'dock', [world.dock]) <= NEARBY_TILES;
   }

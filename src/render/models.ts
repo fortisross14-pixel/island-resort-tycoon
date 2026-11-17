@@ -365,7 +365,53 @@ function diveShop(): THREE.Group {
   return g;
 }
 
+function kidsClub(): THREE.Group {
+  // 3×2 playful club with a slide and a sandpit.
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.06, 1.85, '#f6e7c1'));
+  g.add(box(1.4, 0.7, 1.1, '#ffd166', -0.6, 0.06, -0.3));
+  g.add(hipRoof(1.6, 1.3, 0.45, '#4fb0e8', 0.76));
+  g.children[g.children.length - 1].position.set(-0.6, 0.76 + 0.225, -0.3);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.4), mat('#ff6b6b'));
+  door.position.set(-0.6, 0.26, 0.251);
+  g.add(door);
+  // Slide.
+  g.add(box(0.1, 0.7, 0.1, '#ff6b6b', 0.75, 0.06, -0.4));
+  g.add(box(0.35, 0.06, 0.35, '#ff6b6b', 0.75, 0.76, -0.4));
+  const slide = box(0.28, 0.05, 1.0, '#7bc96f', 0.75, 0.4, 0.05);
+  slide.rotation.x = 0.6;
+  g.add(slide);
+  g.add(box(0.7, 0.05, 0.5, '#f2deaa', 0.6, 0.06, 0.65));
+  for (const [x, c] of [
+    [-1.1, '#ff6b6b'],
+    [-0.3, '#4fb0e8'],
+  ] as const) {
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), mat(c));
+    ball.position.set(x, 0.16, 0.65);
+    g.add(ball);
+  }
+  return g;
+}
+
+function nightclub(): THREE.Group {
+  // 3×3 dark club with neon trim and a queue rope.
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.08, 2.85, '#3a3f4b'));
+  g.add(box(2.4, 1.1, 2.0, '#2a2d38', 0, 0.08, -0.3));
+  g.add(box(2.5, 0.08, 2.1, '#ff3fa4', 0, 1.18, -0.3));
+  g.add(box(2.42, 0.06, 0.04, '#00d1c1', 0, 0.9, 0.72));
+  g.add(box(1.2, 0.3, 0.06, '#9b5cff', 0, 1.0, 0.74));
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.6), mat('#111111'));
+  door.position.set(0, 0.38, 0.701);
+  g.add(door);
+  for (const x of [-0.6, 0.6]) g.add(box(0.06, 0.35, 0.06, '#f2b441', x, 0.08, 1.05));
+  g.add(box(1.2, 0.03, 0.03, '#c0392b', 0, 0.36, 1.05));
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  kidsClub,
+  nightclub,
   researchOffice,
   gardenBungalows,
   italianRestaurant: restaurantModel('#c0392b', '#2e9e4f'),

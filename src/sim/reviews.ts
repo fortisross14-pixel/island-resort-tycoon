@@ -7,7 +7,7 @@
 export interface Review {
   id: number;
   day: number;
-  guestType: 'backpacker' | 'couple';
+  guestType: string;
   stars: number;
   text: string;
   /** The building the review is about, so tapping it can jump the camera there. */

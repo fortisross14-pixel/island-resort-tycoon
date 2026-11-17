@@ -44,6 +44,9 @@ export const NODES: ResearchNode[] = [
   { id: 'gym', name: 'Gym', branch: 'leisure', tier: 2, cost: 10, unlocks: ['gym'], blurb: 'Comfort and a little fun' },
   { id: 'spa', name: 'Spa', branch: 'leisure', tier: 2, cost: 16, unlocks: ['spa'], minStars: 3, blurb: 'Premium comfort and rest' },
   { id: 'boutique', name: 'Boutique', branch: 'leisure', tier: 2, cost: 12, unlocks: ['boutique'], minStars: 3, blurb: 'Premium shopping' },
+  { id: 'kidsClub', name: 'Kids’ Club', branch: 'leisure', tier: 2, cost: 10, unlocks: ['kidsClub'], blurb: 'Keeps families happy' },
+  // Tier 3
+  { id: 'nightclub', name: 'Nightclub', branch: 'leisure', tier: 3, cost: 25, unlocks: ['nightclub'], minStars: 3, blurb: 'Party groups love it; neighbours don’t' },
   { id: 'diveShop', name: 'Dive Shop', branch: 'operations', tier: 2, cost: 14, unlocks: ['diveShop'], minStars: 3, blurb: 'Dive trips from the shore' },
 ];
 

@@ -21,7 +21,9 @@ export type BuildingKind =
   | 'gym'
   | 'spa'
   | 'boutique'
-  | 'diveShop';
+  | 'diveShop'
+  | 'kidsClub'
+  | 'nightclub';
 
 export type BuildingFamily = 'rooms' | 'food' | 'fun' | 'services';
 
@@ -230,6 +232,32 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     quality: 3,
     unlock: 2,
     coast: true,
+  },
+  kidsClub: {
+    kind: 'kidsClub',
+    name: 'Kids’ Club',
+    family: 'fun',
+    w: 3,
+    h: 2,
+    cost: 4500,
+    upkeep: 55,
+    blurb: 'Families · per child',
+    quality: 2,
+    unlock: 2,
+    noisy: true,
+  },
+  nightclub: {
+    kind: 'nightclub',
+    name: 'Nightclub',
+    family: 'fun',
+    w: 3,
+    h: 3,
+    cost: 9000,
+    upkeep: 110,
+    blurb: 'Party · loud at night',
+    quality: 3,
+    unlock: 3,
+    noisy: true,
   },
 };
 

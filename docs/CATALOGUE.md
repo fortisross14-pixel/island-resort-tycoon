@@ -16,7 +16,8 @@ Points: 1 per review star, plus 4 a night per Research Office. A topic is bought
 | Tier | Hospitality | Dining | Leisure | Operations |
 |---|---|---|---|---|
 | 1 | Standard Rooms (6) | Beach Bar (5) | Pool (7), Gift Shop (4) | Front Desk (5) |
-| 2 | Garden Bungalows (15, ★3) | Themed Restaurants (15, ★3) | Gym (10), Spa (16, ★3), Boutique (12, ★3) | Dive Shop (14, ★3) |
+| 2 | Garden Bungalows (15, ★3) | Themed Restaurants (15, ★3) | Gym (10), Spa (16, ★3), Boutique (12, ★3), Kids' Club (10) | Dive Shop (14, ★3) |
+| 3 | — | — | Nightclub (25, ★3) | — |
 | 3–4 | Suites, Water Villas | Fine Dining | Movie Theater, Nightclub, Marina | Conference Hall, Helipad |
 
 ## Rooms
@@ -46,12 +47,12 @@ Points: 1 per review star, plus 4 a night per Research Office. A topic is bought
 | Gift Shop | 1×2 | 1 | Mid | ✅ | Fun +25, souvenirs 18 |
 | Pool | 4×3 | 1 | Mid | ✅ | Free; fun +35, comfort +25 |
 | Gym | 2×2 | 2 | Mid | ✅ | Comfort +25, fun +15 |
-| Kids' Club | 3×2 | 2 | Mid | ⏳ | Needs the Family guest type |
+| Kids' Club | 3×2 | 2 | Mid | ✅ | Families only; 15 per child |
 | Dive Shop | 2×2 (shore) | 2 | Premium | ✅ | Fun +60, 55 a trip; needs ★3 |
 | Boutique | 2×2 | 2 | Premium | ✅ | Fun +30, 50; needs ★3 |
 | Spa | 3×3 | 2 | Premium | ✅ | Comfort +55, rest +25, 60; needs ★3 |
 | Movie Theater | 3×3 | 3 | Mid | ⏳ | |
-| Nightclub | 3×3 | 3 | Premium | ⏳ | Noisy after 22:00 |
+| Nightclub | 3×3 | 3 | Premium | ✅ | Party groups love it; rooms within 3 tiles sleep badly (except party groups); needs ★3 |
 | Marina / Yacht Trips | 4×2 (shore) | 4 | Luxury | ⏳ | |
 
 ## Services
@@ -71,3 +72,16 @@ Points: 1 per review star, plus 4 a night per Research Office. A topic is bought
 | Footpath | ✅ | 10 a tile |
 | Land plots | ✅ | 7×7, from 3,000, ×1.35 per plot bought |
 | Decoration, utilities | ⏳ | Appeal and nuisance |
+
+## Guest types
+
+| Type | Party | Arrives at | Budget a night | Room tier | Loves | Dislikes |
+|---|---|---|---|---|---|---|
+| Backpacker | 1 | start | 40–70 | 1 | Snack Bar, Beach Bar | high prices |
+| Couple | 2 | start | 90–140 | 2 | restaurants, Spa | Kids' Club |
+| Family | 3–4 | ★2 | 80–130 | 2 | Buffet, Pool, Kids' Club | Nightclub, long walks |
+| Wellness seeker | 1 | ★3 | 130–200 | 3 | Spa, Gym, Pool | Snack Bar, Nightclub |
+| Party group | 3 | ★3 | 70–110 | 2 | Beach Bar, Nightclub; out until 22:45 | — |
+| VIP | 2 | ★4 | 260–400 | 4 | restaurants, Spa, Boutique | Snack Bar, Buffet, crowds |
+
+VIPs expect tier-4 rooms (Suites), which aren't in the game yet, so they always find their room a step down.

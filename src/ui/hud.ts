@@ -22,6 +22,10 @@ export interface HudHandlers {
 export type Tab = 'build' | 'guests' | 'research';
 
 const WISH_ICONS: Record<Wish, string> = {
+  kidsClub: '<svg viewBox="0 0 16 16"><path d="M3 13 L9 3 L11 3 L5 13 Z" fill="#7bc96f"/><circle cx="12" cy="10" r="3" fill="#ff6b6b"/></svg>',
+  spa: '<svg viewBox="0 0 16 16"><path d="M8 2 q-5 6 0 12 q5 -6 0 -12 Z" fill="#5fb3a5"/></svg>',
+  gym: '<svg viewBox="0 0 16 16"><rect x="4" y="7" width="8" height="2" fill="#ff6b6b"/><rect x="2" y="5" width="3" height="6" fill="#ff6b6b"/><rect x="11" y="5" width="3" height="6" fill="#ff6b6b"/></svg>',
+  nightclub: '<svg viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="2" fill="#2a2d38"/><circle cx="8" cy="8" r="2.5" fill="#ff3fa4"/></svg>',
   snacks: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="#ffe2bd"/><path d="M2 7 L4 3 H12 L14 7 Z" fill="#f2b441"/></svg>',
   buffet: '<svg viewBox="0 0 16 16"><path d="M1 7 L4 4 H12 L15 7 Z" fill="#3fa7a0"/><rect x="2" y="7" width="12" height="6" fill="#fff4e2" stroke="#d9c4a0" stroke-width=".6"/></svg>',
   quiet: '<svg viewBox="0 0 16 16"><path d="M11 2.5 A6 6 0 1 0 13.5 11 A4.6 4.6 0 0 1 11 2.5 Z" fill="#6b7fd6"/></svg>',
@@ -30,17 +34,33 @@ const WISH_ICONS: Record<Wish, string> = {
   shortWalk: '<svg viewBox="0 0 16 16"><path d="M2 10 H14 L12 13 H4 Z" fill="#a8754a"/><rect x="7.2" y="3" width="1.6" height="7" fill="#7d5534"/><path d="M8.8 3.5 L13 7 H8.8 Z" fill="#fff"/></svg>',
 };
 
+const ICON_SHIRTS: Record<string, string[]> = {
+  backpacker: ['#ff9f43'],
+  couple: ['#ff7aa8', '#b38cf0'],
+  family: ['#4fb0e8', '#7bc96f', '#ffd166', '#ff9f43'],
+  wellness: ['#c9f0e4'],
+  party: ['#ff3fa4', '#9b5cff', '#00d1c1'],
+  vip: ['#222831', '#f2b441'],
+};
+
 function peopleIcon(g: Guest): string {
-  const shirt = g.type === 'couple' ? ['#ff7aa8', '#b38cf0'] : ['#ff9f43'];
-  const fig = (x: number, c: string) =>
-    `<circle cx="${x}" cy="9" r="4" fill="#f4cfa8"/><path d="M${x - 6} 26 Q${x - 6} 14 ${x} 14 Q${x + 6} 14 ${x + 6} 26 Z" fill="${c}"/>`;
-  return `<svg viewBox="0 0 32 28">${g.size === 2 ? fig(11, shirt[0]) + fig(21, shirt[1]) : fig(16, shirt[0])}</svg>`;
+  const shirts = ICON_SHIRTS[g.type] ?? ['#ff9f43'];
+  const fig = (x: number, c: string, s: number) =>
+    `<g transform="translate(${x} ${28 - 28 * s}) scale(${s})"><circle cx="0" cy="9" r="4" fill="#f4cfa8"/><path d="M-6 26 Q-6 14 0 14 Q6 14 6 26 Z" fill="${c}"/></g>`;
+  const n = g.size;
+  const step = n === 1 ? 0 : Math.min(10, 22 / (n - 1));
+  const x0 = 16 - (step * (n - 1)) / 2;
+  let out = '';
+  for (let k = 0; k < n; k++) out += fig(x0 + k * step, shirts[k % shirts.length], g.type === 'family' && k >= 2 ? 0.7 : 1);
+  return `<svg viewBox="0 0 32 28">${out}</svg>`;
 }
 
 /** 0 = paused. */
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  kidsClub: '<svg viewBox="0 0 32 32"><rect x="4" y="12" width="16" height="14" fill="#ffd166"/><path d="M3 12 L12 5 L21 12 Z" fill="#4fb0e8"/><path d="M22 26 L28 14 L30 14 L24 26 Z" fill="#7bc96f"/><circle cx="12" cy="20" r="3" fill="#ff6b6b"/></svg>',
+  nightclub: '<svg viewBox="0 0 32 32"><rect x="4" y="9" width="24" height="18" fill="#2a2d38"/><rect x="4" y="7" width="24" height="3" fill="#ff3fa4"/><rect x="9" y="13" width="14" height="3" fill="#9b5cff"/><rect x="13" y="19" width="6" height="8" fill="#111"/></svg>',
   researchOffice: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#eef3f7"/><rect x="5" y="10" width="22" height="3" fill="#6b7fd6"/><path d="M19 9 a5 5 0 0 1 8 -4" stroke="#999" stroke-width="2" fill="none"/><rect x="9" y="16" width="5" height="4" fill="#3b6e8f"/><rect x="18" y="16" width="5" height="4" fill="#3b6e8f"/></svg>',
   gardenBungalows: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#8cc860"/><path d="M3 14 L9 9 L15 14 Z" fill="#7a5a3a"/><rect x="4" y="14" width="10" height="8" fill="#a8754a"/><path d="M17 14 L23 9 L29 14 Z" fill="#7a5a3a"/><rect x="18" y="14" width="10" height="8" fill="#a8754a"/></svg>',
   italianRestaurant: '<svg viewBox="0 0 32 32"><path d="M3 13 L16 5 L29 13 Z" fill="#c0392b"/><rect x="5" y="13" width="22" height="13" fill="#fff4e2"/><rect x="10" y="15" width="12" height="4" fill="#2e9e4f"/></svg>',
@@ -265,7 +285,7 @@ export class Hud {
     const wishes = g.wishes
       .map((w) => `<span class="wish" title="${WISHES[w].label}">${WISH_ICONS[w]}</span>`)
       .join('');
-    b.innerHTML = `<span class="icon">${peopleIcon(g)}</span><span class="name">${def.name}</span><span class="sub">${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} · <span class="coin-icon"></span>${g.budget}</span><span class="wishes">${wishes}</span><span class="patience"><i></i></span>`;
+    b.innerHTML = `<span class="icon">${peopleIcon(g)}</span><span class="name">${def.name}${g.size > 2 ? ` of ${g.size}` : ''}</span><span class="sub">${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} · <span class="coin-icon"></span>${g.budget}</span><span class="wishes">${wishes}</span><span class="patience"><i></i></span>`;
     b.title = `${def.name}: wants ${g.wishes.map((w) => WISHES[w].label.toLowerCase()).join(', ')}`;
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();

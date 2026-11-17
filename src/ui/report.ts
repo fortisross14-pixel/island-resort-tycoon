@@ -1,5 +1,5 @@
 import type { Review } from '../sim/reviews';
-import type { NightLine, NightReport } from '../sim/sim';
+import { GUEST_TYPES, type GuestType, type NightLine, type NightReport } from '../sim/sim';
 
 export interface ReportHandlers {
   onStartDay(): void;
@@ -78,7 +78,7 @@ export class NightReportView {
       ? r.reviews
           .map(
             (rv) =>
-              `<li${rv.buildingId !== null ? ` data-review="${rv.id}" class="link" title="Show on the map"` : ''}><span class="stars">${starsText(rv.stars)}</span><span>“${rv.text}”</span><small>${rv.guestType === 'couple' ? 'Couple' : 'Backpacker'}</small></li>`,
+              `<li${rv.buildingId !== null ? ` data-review="${rv.id}" class="link" title="Show on the map"` : ''}><span class="stars">${starsText(rv.stars)}</span><span>“${rv.text}”</span><small>${GUEST_TYPES[rv.guestType as GuestType]?.name ?? rv.guestType}</small></li>`,
           )
           .join('')
       : '<li class="muted">No one checked out today.</li>';

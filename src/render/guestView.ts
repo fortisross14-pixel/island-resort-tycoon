@@ -6,7 +6,19 @@ import type { Stage } from './stage';
 const SHIRTS: Record<Guest['type'], string[]> = {
   backpacker: ['#ff9f43', '#f7d046', '#7bc96f', '#4fb0e8'],
   couple: ['#ff7aa8', '#ffffff', '#b38cf0', '#ff6b6b'],
+  family: ['#4fb0e8', '#7bc96f', '#ffd166', '#ff9f43'],
+  wellness: ['#ffffff', '#c9f0e4', '#e8e0ff'],
+  party: ['#ff3fa4', '#9b5cff', '#00d1c1', '#ffe14d'],
+  vip: ['#222831', '#f2b441', '#ffffff'],
 };
+
+/** Where each member of a party walks, relative to the first, in tiles. */
+const PARTY_OFFSETS: Array<[number, number]> = [
+  [0, 0],
+  [0.2, 0.12],
+  [-0.16, 0.2],
+  [0.06, 0.32],
+];
 const SKIN = ['#f4cfa8', '#d9a47a', '#a8724c', '#7a4f33'];
 
 /**
@@ -42,8 +54,8 @@ export class GuestView {
     const headGeo = new THREE.IcosahedronGeometry(0.1, 0);
     headGeo.translate(0, 0.48, 0);
     // Up to two people per party.
-    this.bodies = new THREE.InstancedMesh(bodyGeo, mat('#ffffff'), MAX_GUESTS * 2);
-    this.heads = new THREE.InstancedMesh(headGeo, mat('#ffffff'), MAX_GUESTS * 2);
+    this.bodies = new THREE.InstancedMesh(bodyGeo, mat('#ffffff'), MAX_GUESTS * 4);
+    this.heads = new THREE.InstancedMesh(headGeo, mat('#ffffff'), MAX_GUESTS * 4);
     for (const im of [this.bodies, this.heads]) {
       im.count = 0;
       im.castShadow = true;
@@ -64,18 +76,20 @@ export class GuestView {
     let i = 0;
     this.ring.visible = false;
     for (const g of this.sim.guests) {
-      if (!isVisible(g) || i >= MAX_GUESTS * 2 - 1) continue;
+      if (!isVisible(g) || i > MAX_GUESTS * 4 - g.size) continue;
       const [ox, oz] = offset(g);
       const x = g.px + (g.x - g.px) * alpha + ox;
       const z = g.pz + (g.z - g.pz) * alpha + oz;
       const moving = isMoving(g);
       const shirts = SHIRTS[g.type];
       for (let k = 0; k < g.size; k++) {
-        // The second person in a couple walks a step beside the first.
-        const px = x + k * 0.2;
-        const pz = z + k * 0.12;
+        // The rest of the party walks a step beside the first; children are smaller.
+        const [ox2, oz2] = PARTY_OFFSETS[k % PARTY_OFFSETS.length];
+        const child = g.type === 'family' && k >= 2;
         const bob = moving ? Math.abs(Math.sin(this.time * 9 + g.look + k * 1.3)) * 0.05 : 0;
-        this.p.set(px, 0.02 + bob, pz);
+        this.p.set(x + ox2, 0.02 + bob, z + oz2);
+        const sc = child ? 0.68 : 1;
+        this.s.set(sc, sc, sc);
         this.m.compose(this.p, this.q, this.s);
         this.bodies.setMatrixAt(i, this.m);
         this.heads.setMatrixAt(i, this.m);

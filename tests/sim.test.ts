@@ -7,6 +7,7 @@ import {
   SECONDS_PER_GAME_HOUR,
   Sim,
   TICK,
+  GUEST_TYPES,
   PATIENCE_SECONDS,
   arrivalsForDay,
   isVisible,
@@ -262,12 +263,29 @@ describe('check-in (M3)', () => {
     expect(g.satisfaction).toBe(Math.max(0, scoreHand - AUTO_PENALTY));
   });
 
-  it('couples are one party of two sharing a room', () => {
+  it('every party has a size within its type’s range', () => {
     const sim = new Sim(starterResort());
     for (let i = 0; i < 3; i++) {
       untilQueued(sim);
-      for (const g of sim.queue) expect(g.size).toBe(g.type === 'couple' ? 2 : 1);
+      for (const g of sim.queue) {
+        const [lo, hi] = GUEST_TYPES[g.type].size;
+        expect(g.size).toBeGreaterThanOrEqual(lo);
+        expect(g.size).toBeLessThanOrEqual(hi);
+      }
       runHours(sim, 16);
     }
+  });
+});
+
+describe('overnight (regression)', () => {
+  it('everyone who went to bed wakes up the next morning', () => {
+    const sim = autoSim(starterResort());
+    runHours(sim, 14.5); // to 21:30: plenty of guests in bed
+    const asleep = () => sim.guests.filter((g) => g.state === 'inside' && g.timer > 1e8);
+    expect(asleep().length).toBeGreaterThan(0);
+    runHours(sim, 1.6); // past 23:00 into the next morning (07:06)
+    expect(sim.minutes).toBeLessThan(8 * 60);
+    runHours(sim, 0.5);
+    expect(asleep()).toHaveLength(0);
   });
 });
