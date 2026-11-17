@@ -4,10 +4,10 @@ A premium mobile tycoon game: grow a tiny island into a five-star resort, check 
 hand, and watch them walk your paths and spend money.
 
 This repository holds the proof of concept. The plan is in [docs/ROADMAP.md](docs/ROADMAP.md).
-**M1 (island and construction) and M2 (clock, ferry and walkers) are done.**
+**M1 (island and construction), M2 (clock, ferry and walkers) and M3 (check-in) are done.**
 Play it on GitHub Pages: https://fortisross14-pixel.github.io/island-resort-tycoon/
 
-![M2: guests walking around a starter resort](docs/m2.png)
+![M3: dragging a backpacker onto a room shows the match score](docs/m3.png)
 
 ## Run it
 
@@ -31,6 +31,7 @@ npm run build      # type-check and build to dist/
 | Undo (full refund) | **Undo** | `Ctrl/Cmd+Z` |
 | Leave the tool | **Done** | `Esc` |
 | Pause / speed | ❚❚ 1× 2× 4× | `Space` pauses |
+| Check in a guest | **Guests** tab: drag a card onto a room, or tap a card then a room | same; `G` toggles the tab |
 
 Tap a guest or a building with no tool selected to see who or what it is.
 
@@ -43,7 +44,8 @@ src/
     world.ts       grid, paths, buildings, placement rules, snapshots
     history.ts     undo
     pathGraph.ts   cached walking distances over the footpaths
-    sim.ts         clock, ferry and guest agents (fixed tick)
+    sim.ts         clock, ferry, check-in queue and guest agents (fixed tick)
+    match.ts       room match score: budget tier and wishes
     rng.ts         seeded RNG
   render/     Three.js
     stage.ts       renderer, ortho camera, picking, pan/zoom, render-on-demand

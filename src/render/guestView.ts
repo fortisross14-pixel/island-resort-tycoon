@@ -22,18 +22,28 @@ export class GuestView {
   private p = new THREE.Vector3();
   private c = new THREE.Color();
   private time = 0;
+  private ring: THREE.Mesh;
+  private selected: number | null = null;
 
   constructor(
     stage: Stage,
     private sim: Sim,
   ) {
+    this.ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.2, 0.28, 20).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: '#ff8a4c', depthWrite: false }),
+    );
+    this.ring.renderOrder = 3;
+    this.ring.visible = false;
+    stage.scene.add(this.ring);
     // Chunky and a little oversized so guests read clearly at phone zoom.
     const bodyGeo = new THREE.CylinderGeometry(0.09, 0.13, 0.38, 6);
     bodyGeo.translate(0, 0.19, 0);
     const headGeo = new THREE.IcosahedronGeometry(0.1, 0);
     headGeo.translate(0, 0.48, 0);
-    this.bodies = new THREE.InstancedMesh(bodyGeo, mat('#ffffff'), MAX_GUESTS);
-    this.heads = new THREE.InstancedMesh(headGeo, mat('#ffffff'), MAX_GUESTS);
+    // Up to two people per party.
+    this.bodies = new THREE.InstancedMesh(bodyGeo, mat('#ffffff'), MAX_GUESTS * 2);
+    this.heads = new THREE.InstancedMesh(headGeo, mat('#ffffff'), MAX_GUESTS * 2);
     for (const im of [this.bodies, this.heads]) {
       im.count = 0;
       im.castShadow = true;
@@ -43,26 +53,42 @@ export class GuestView {
     }
   }
 
+  /** Mark one party with a ring (the card being placed). */
+  setSelected(id: number | null): void {
+    this.selected = id;
+  }
+
   /** alpha = fraction of the way from the previous tick to the current one. */
   update(alpha: number, dtReal: number): void {
     this.time += dtReal;
     let i = 0;
+    this.ring.visible = false;
     for (const g of this.sim.guests) {
-      if (!isVisible(g) || i >= MAX_GUESTS) continue;
+      if (!isVisible(g) || i >= MAX_GUESTS * 2 - 1) continue;
       // A small per-guest offset so groups don't stand inside each other.
       const ox = (((g.look * 37) % 100) / 100 - 0.5) * 0.36;
       const oz = (((g.look * 61) % 100) / 100 - 0.5) * 0.36;
       const x = g.px + (g.x - g.px) * alpha + ox;
       const z = g.pz + (g.z - g.pz) * alpha + oz;
-      const bob = isMoving(g) ? Math.abs(Math.sin(this.time * 9 + g.look)) * 0.05 : 0;
-      this.p.set(x, 0.02 + bob, z);
-      this.m.compose(this.p, this.q, this.s);
-      this.bodies.setMatrixAt(i, this.m);
-      this.heads.setMatrixAt(i, this.m);
+      const moving = isMoving(g);
       const shirts = SHIRTS[g.type];
-      this.bodies.setColorAt(i, this.c.set(shirts[g.look % shirts.length]));
-      this.heads.setColorAt(i, this.c.set(SKIN[g.look % SKIN.length]));
-      i++;
+      for (let k = 0; k < g.size; k++) {
+        // The second person in a couple walks a step beside the first.
+        const px = x + k * 0.2;
+        const pz = z + k * 0.12;
+        const bob = moving ? Math.abs(Math.sin(this.time * 9 + g.look + k * 1.3)) * 0.05 : 0;
+        this.p.set(px, 0.02 + bob, pz);
+        this.m.compose(this.p, this.q, this.s);
+        this.bodies.setMatrixAt(i, this.m);
+        this.heads.setMatrixAt(i, this.m);
+        this.bodies.setColorAt(i, this.c.set(shirts[(g.look + k) % shirts.length]));
+        this.heads.setColorAt(i, this.c.set(SKIN[(g.look + k * 2) % SKIN.length]));
+        i++;
+      }
+      if (g.id === this.selected) {
+        this.ring.visible = true;
+        this.ring.position.set(x + (g.size - 1) * 0.1, 0.06, z + (g.size - 1) * 0.06);
+      }
     }
     for (const im of [this.bodies, this.heads]) {
       im.count = i;

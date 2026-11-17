@@ -5,7 +5,8 @@ import { GUEST_TYPES, Sim, TICK, type SimEvent, type SimSnapshot } from './sim/s
 import { FerryView, GuestView } from './render/guestView';
 import { Stage } from './render/stage';
 import { WorldView } from './render/worldView';
-import { Hud, type Speed, type TrayItem } from './ui/hud';
+import { Hud, type Speed, type Tab, type TrayItem } from './ui/hud';
+import type { HighlightTone, RoomMark } from './render/worldView';
 
 type Tool =
   | { type: 'none' }
@@ -54,7 +55,11 @@ export class Game {
   private speed: Speed = 1;
   private tickAcc = 0;
   private sinceSave = 0;
-  private turnedAwayToast = 0;
+  private gaveUpToast = 0;
+  private tab: Tab = 'build';
+  /** The arrival card being placed (dragged, or tapped then a room tapped). */
+  private selectedGuest: number | null = null;
+  private cardDrag: { id: number; sx: number; sy: number; moved: boolean } | null = null;
   private hud: Hud;
   private tool: Tool = { type: 'none' };
   private ptrs = new Map<number, Ptr>();
@@ -89,6 +94,9 @@ export class Game {
       onCancel: () => this.setTool({ type: 'none' }),
       onNewIsland: () => this.newIsland(),
       onSpeed: (sp) => this.setSpeed(sp),
+      onTab: (tab) => this.setTab(tab),
+      onGuestDown: (id, e) => this.onGuestDown(id, e),
+      onAutoAssign: () => this.autoAssign(),
     });
     this.sim.on((e) => this.onSimEvent(e));
     this.stage.onFrame((dt) => this.frame(dt));
@@ -125,6 +133,9 @@ export class Game {
     this.guestView.update(alpha, this.speed > 0 ? dt : 0);
     this.ferryView.update(this.speed > 0 ? dt : 0);
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
+    const queue = this.sim.queue;
+    this.hud.setQueue(queue);
+    this.followQueue(queue.length);
     return this.speed > 0;
   }
 
@@ -133,14 +144,21 @@ export class Game {
       case 'ferryArriving':
         return this.hud.toast('The morning ferry is coming in', 'info');
       case 'ferryDocked':
-        return this.hud.toast(e.guests === 1 ? '1 guest arrived' : `${e.guests} guests arrived`, 'good');
-      case 'turnedAway': {
-        // One toast per ferry load, not one per guest.
+        if (e.guests === 0) return;
+        this.setTab('guests');
+        return this.hud.toast(`${e.guests} ${e.guests === 1 ? 'party' : 'parties'} arrived: drag them to rooms`, 'good');
+      case 'gaveUp': {
+        if (this.selectedGuest === e.guestId) this.selectNextGuest();
+        // One toast per wave of departures, not one per party.
         const now = performance.now();
-        if (now - this.turnedAwayToast > 4000) this.hud.toast('No free room: guests are leaving. Build more rooms!');
-        this.turnedAwayToast = now;
+        if (now - this.gaveUpToast > 4000) this.hud.toast('A party gave up waiting and is heading home');
+        this.gaveUpToast = now;
         return;
       }
+      case 'checkedIn':
+        if (this.selectedGuest === e.guestId) this.selectNextGuest();
+        else if (this.selectedGuest !== null) this.showRoomMarks();
+        return;
       case 'newDay': {
         const y = e.yesterday;
         this.hud.toast(`Day ${e.day} · yesterday ${y.arrived} arrived, ${y.turnedAway} turned away`, 'info');
@@ -150,9 +168,129 @@ export class Game {
     }
   }
 
+  // ---------- check-in (M3) ----------
+
+  setTab(tab: Tab): void {
+    this.tab = tab;
+    this.hud.setTab(tab);
+    if (tab === 'guests') {
+      if (this.tool.type !== 'none') this.setTool({ type: 'none' });
+      const first = this.sim.queue[0];
+      if (this.selectedGuest === null && first) this.selectGuest(first.id);
+      this.hud.setHint(this.sim.queue.length ? 'Drag a guest onto a room, or tap a guest and then a room.' : '');
+    } else {
+      this.selectGuest(null);
+      this.hud.setHint(HINTS[this.tool.type]);
+    }
+  }
+
+  selectGuest(id: number | null): void {
+    this.selectedGuest = id;
+    this.hud.setSelectedGuest(id);
+    this.guestView.setSelected(id);
+    if (id === null) this.view.clearRoomMarks();
+    else this.showRoomMarks();
+    this.stage.requestRender();
+  }
+
+  /** Keep the Guests tab pointing at someone while people are waiting. */
+  private followQueue(waiting: number): void {
+    if (this.tab !== 'guests' || this.cardDrag) return;
+    const sel = this.selectedGuest;
+    if (sel !== null && !this.sim.queue.some((g) => g.id === sel)) return this.selectNextGuest();
+    if (sel === null && waiting > 0) {
+      this.selectGuest(this.sim.queue[0].id);
+      this.hud.setHint('Drag a guest onto a room, or tap a guest and then a room.');
+    }
+  }
+
+  /** After placing someone, move straight on to the next card (or back to building when done). */
+  private selectNextGuest(): void {
+    const next = this.sim.queue[0];
+    if (next) return this.selectGuest(next.id);
+    this.selectGuest(null);
+    if (this.tab === 'guests') this.setTab('build');
+  }
+
+  private markTone(score: number): HighlightTone {
+    return score >= 70 ? 'ok' : score >= 45 ? 'warn' : 'bad';
+  }
+
+  /** Light up every room with how well it suits the selected party. */
+  private showRoomMarks(): void {
+    const g = this.selectedGuest !== null ? this.sim.guest(this.selectedGuest) : undefined;
+    if (!g) return this.view.clearRoomMarks();
+    const marks: RoomMark[] = [];
+    for (const b of this.world.buildings) {
+      if (!this.sim.isRoom(b)) continue;
+      const tiles = this.world.footprintTiles(b.kind, b.x, b.y, b.rot);
+      if (!this.sim.hasVacancy(b)) marks.push({ id: b.id, tiles, tone: 'info', label: 'Full' });
+      else {
+        const { score } = this.sim.match(g, b);
+        marks.push({ id: b.id, tiles, tone: this.markTone(score), label: String(score) });
+      }
+    }
+    this.view.showRoomMarks(marks);
+  }
+
+  /** Room under a screen point, if any. */
+  private roomAt(clientX: number, clientY: number) {
+    const t = this.tileAt(clientX, clientY);
+    const b = t && this.world.buildingAt(t.x, t.y);
+    return b && this.sim.isRoom(b) ? b : null;
+  }
+
+  private onGuestDown(id: number, e: PointerEvent): void {
+    if (this.tool.type !== 'none') this.setTool({ type: 'none' });
+    this.selectGuest(id);
+    this.cardDrag = { id, sx: e.clientX, sy: e.clientY, moved: false };
+  }
+
+  private dragCardTo(e: PointerEvent, canvas: HTMLCanvasElement): void {
+    const d = this.cardDrag;
+    if (!d) return;
+    if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > TAP_SLOP) d.moved = true;
+    if (!d.moved) return;
+    const g = this.sim.guest(d.id);
+    const room = document.elementFromPoint(e.clientX, e.clientY) === canvas ? this.roomAt(e.clientX, e.clientY) : null;
+    this.view.focusRoomMark(room?.id ?? null);
+    if (!g) return this.hud.hideChip();
+    if (!room) return this.hud.showChip('Drop on a room', 'info', e.clientX, e.clientY);
+    if (!this.sim.hasVacancy(room)) return this.hud.showChip('Full', 'bad', e.clientX, e.clientY);
+    const m = this.sim.match(g, room);
+    const notes = m.notes.map((n) => `${n.ok ? '✓' : '✗'} ${n.text}`).join('  ');
+    this.hud.showChip(`${m.score} · ${notes}`, this.markTone(m.score), e.clientX, e.clientY);
+  }
+
+  private dropCard(e: PointerEvent, canvas: HTMLCanvasElement): void {
+    const d = this.cardDrag;
+    this.cardDrag = null;
+    this.hud.hideChip();
+    this.view.focusRoomMark(null);
+    if (!d || !d.moved) return; // a tap: the card stays selected, tap a room next
+    if (document.elementFromPoint(e.clientX, e.clientY) !== canvas) return;
+    const room = this.roomAt(e.clientX, e.clientY);
+    if (room) this.tryCheckIn(d.id, room.id);
+  }
+
+  private tryCheckIn(guestId: number, roomId: number): void {
+    const r = this.sim.checkIn(guestId, roomId);
+    if (!r.ok) return this.hud.toast(r.reason);
+    const verdict = r.score >= 70 ? 'Great match' : r.score >= 45 ? 'Checked in' : 'Poor match';
+    this.hud.toast(`${verdict} · ${r.score}`, r.score >= 45 ? 'good' : 'bad');
+  }
+
+  private autoAssign(): void {
+    const n = this.sim.autoCheckInAll();
+    const left = this.sim.queue.length;
+    if (n === 0) this.hud.toast(left ? 'No free rooms. Build more Basic Rooms!' : 'No one is waiting');
+    else this.hud.toast(`Auto-assigned ${n}${left ? `, ${left} still waiting (no free rooms)` : ''}`, 'good');
+  }
+
   // ---------- tools ----------
 
   setTool(t: Tool): void {
+    if (t.type !== 'none' && this.tab !== 'build') this.setTab('build');
     this.tool = t;
     this.ghostAt = null;
     this.view.hideGhost();
@@ -189,6 +327,7 @@ export class Game {
     for (const k of BUILDING_KINDS) this.hud.setAffordable(k, this.world.money >= BUILDINGS[k].cost);
     // History commits after the edit that triggered this event, so read it next tick.
     queueMicrotask(() => this.hud.setUndo(this.history.canUndo));
+    if (this.selectedGuest !== null) this.showRoomMarks();
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => this.save(), 300);
   }
@@ -284,11 +423,24 @@ export class Game {
   private inspect(t: Tile, clientX: number, clientY: number): void {
     const p = this.stage.groundAt(clientX, clientY);
     const g = p && this.guestView.pick(p.x, p.z);
+    if (g && this.sim.queue.includes(g)) {
+      this.setTab('guests');
+      return this.selectGuest(g.id);
+    }
     if (g) {
+      const mood = g.satisfaction >= 70 ? 'happy' : g.satisfaction >= 45 ? 'content' : 'unhappy';
       const stay = g.leaving ? 'heading home' : `${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} left`;
-      return this.hud.toast(`${GUEST_TYPES[g.type].name} · ${stay} · “${g.thought}”`, 'info');
+      return this.hud.toast(`${GUEST_TYPES[g.type].name} · ${mood} · ${stay} · “${g.thought}”`, 'info');
     }
     const b = this.world.buildingAt(t.x, t.y);
+    if (this.selectedGuest !== null) {
+      if (b && this.sim.isRoom(b)) return this.tryCheckIn(this.selectedGuest, b.id);
+      return this.selectGuest(null);
+    }
+    if (b && this.sim.isRoom(b)) {
+      const n = this.sim.occupancy(b.id);
+      return this.hud.toast(`${BUILDINGS[b.kind].name} · ${n} of 2 rooms taken · built on day ${b.builtDay}`, 'info');
+    }
     if (b) this.hud.toast(`${BUILDINGS[b.kind].name} · built on day ${b.builtDay}`, 'info');
   }
 
@@ -305,6 +457,12 @@ export class Game {
 
   private bindInput(canvas: HTMLCanvasElement): void {
     // Drags that start on a tray card.
+    window.addEventListener('pointermove', (e) => this.dragCardTo(e, canvas));
+    window.addEventListener('pointerup', (e) => this.dropCard(e, canvas));
+    window.addEventListener('pointercancel', () => {
+      this.cardDrag = null;
+      this.hud.hideChip();
+    });
     window.addEventListener('pointermove', (e) => {
       const d = this.trayDrag;
       if (!d) return;
@@ -353,7 +511,10 @@ export class Game {
       }
       switch (e.key.toLowerCase()) {
         case 'escape':
+          if (this.selectedGuest !== null) return this.selectGuest(null);
           return this.setTool({ type: 'none' });
+        case 'g':
+          return this.setTab(this.tab === 'guests' ? 'build' : 'guests');
         case 'r':
           return this.rotate();
         case 'x':

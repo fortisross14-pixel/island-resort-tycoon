@@ -1,11 +1,12 @@
 import { BUILDINGS } from './buildings';
+import { AUTO_PENALTY, accessOf, matchScore, type Match, type Wish } from './match';
 import { PathGraph } from './pathGraph';
 import { Rng } from './rng';
 import type { Building, Tile, World } from './world';
 
 /**
- * The living resort (M2): the day clock, the morning ferry, and guests walking the
- * footpaths. Runs at a fixed tick, separate from drawing (GDD risk mitigation for
+ * The living resort: the day clock, the morning ferry, check-in (M3) and guests
+ * walking the footpaths. Runs at a fixed tick, separate from drawing (GDD risk mitigation for
  * many guests on phones). Pure TypeScript, so it runs headless in tests.
  *
  * Time units: "sim seconds" drive movement (one real second at 1x speed);
@@ -26,15 +27,47 @@ export const FERRY_TRAVEL_SECONDS = 6;
 export const UNLOAD_INTERVAL = 0.45;
 export const WALK_SPEED = 1.4; // tiles per sim second
 export const ROOMS_PER_BUILDING = 2;
-export const MAX_GUESTS = 200;
+/** Parties on the island at once (a couple is one party of two). */
+export const MAX_GUESTS = 150;
+/** How long a party waits on the pier for a room before giving up (2 game hours). */
+export const PATIENCE_SECONDS = 2 * SECONDS_PER_GAME_HOUR;
 /** Timer value meaning "inside until morning". */
 const OVERNIGHT = 1e9;
 
 export type GuestType = 'backpacker' | 'couple';
 
-export const GUEST_TYPES: Record<GuestType, { name: string; nights: [number, number] }> = {
-  backpacker: { name: 'Backpacker', nights: [1, 2] },
-  couple: { name: 'Couple', nights: [2, 4] },
+export interface GuestTypeDef {
+  name: string;
+  /** People in the party; they share one room. */
+  size: 1 | 2;
+  nights: [number, number];
+  /** Nightly budget in coins (charged in M5). */
+  budget: [number, number];
+  /** Room tier their budget expects (1 = Basic Rooms). */
+  tier: number;
+  wishPool: Wish[];
+  wishCount: [number, number];
+}
+
+export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
+  backpacker: {
+    name: 'Backpacker',
+    size: 1,
+    nights: [1, 2],
+    budget: [40, 70],
+    tier: 1,
+    wishPool: ['snacks', 'shortWalk'],
+    wishCount: [1, 1],
+  },
+  couple: {
+    name: 'Couple',
+    size: 2,
+    nights: [2, 4],
+    budget: [90, 140],
+    tier: 2,
+    wishPool: ['buffet', 'quiet', 'snacks'],
+    wishCount: [1, 2],
+  },
 };
 
 export interface Point {
@@ -49,11 +82,25 @@ export type Goal =
   | { kind: 'dock' }
   | { kind: 'tile'; tile: Tile };
 
-export type GuestState = 'arriving' | 'walking' | 'inside' | 'waiting' | 'boarding' | 'gone';
+/**
+ * arriving: walking off the boat (to the queue, or to the island once checked in)
+ * queued:   standing on the pier waiting for a room
+ * waiting:  on the pier waiting for the ferry home
+ */
+export type GuestState = 'arriving' | 'queued' | 'walking' | 'inside' | 'waiting' | 'boarding' | 'gone';
 
+/** One party: a backpacker, or a couple sharing a room. */
 export interface Guest {
   id: number;
   type: GuestType;
+  size: 1 | 2;
+  budget: number;
+  tier: number;
+  wishes: Wish[];
+  /** Sim seconds of patience left while queued. */
+  patience: number;
+  /** 0–100; starts at the room match score. */
+  satisfaction: number;
   /** Building id of their room, or null when unhoused. */
   roomId: number | null;
   nightsLeft: number;
@@ -97,7 +144,7 @@ export interface DayStats {
 }
 
 export interface SimSnapshot {
-  version: 1;
+  version: 2;
   minutes: number;
   rng: number;
   nextGuestId: number;
@@ -110,21 +157,26 @@ export type SimEvent =
   | { type: 'ferryArriving' }
   | { type: 'ferryDocked'; guests: number }
   | { type: 'ferryLeft' }
-  | { type: 'turnedAway'; guestId: number }
+  | { type: 'gaveUp'; guestId: number }
+  | { type: 'checkedIn'; guestId: number; roomId: number; score: number; auto: boolean }
   | { type: 'newDay'; day: number; yesterday: DayStats };
 
 const emptyStats = (): DayStats => ({ arrived: 0, housed: 0, turnedAway: 0, departed: 0 });
 
-/** Guests arriving on a given day's ferry (first pass; M5 ties this to the star rating). */
+/** Parties arriving on a given day's ferry (first pass; M5 ties this to the star rating). */
 export function arrivalsForDay(day: number): number {
-  return Math.min(4 + 2 * day, 20);
+  return Math.min(3 + day, 12);
 }
+
+export type CheckInResult = { ok: true; score: number } | { ok: false; reason: string };
 
 export class Sim {
   minutes = DAY_START;
   guests: Guest[] = [];
   ferry: Ferry = { phase: 'away', t: 0, toUnload: 0, unloadTimer: 0, cameToday: false };
   today: DayStats = emptyStats();
+  /** Front Desk behaviour: place arrivals automatically (scores AUTO_PENALTY lower). */
+  autoCheckIn = false;
   readonly paths: PathGraph;
   private rng = new Rng();
   private nextGuestId = 1;
@@ -162,6 +214,12 @@ export class Sim {
     return towardsBoat ? pts : pts.reverse();
   }
 
+  /** Where unhoused arrivals stand, near the land end of the pier. */
+  private queueSpot(): Point {
+    const d = this.world.dock;
+    return { x: d.x + 0.5 + this.rng.range(-0.22, 0.22), z: d.y + this.rng.range(1.25, 2.6) };
+  }
+
   private waitingSpot(): Point {
     const d = this.world.dock;
     return { x: d.x + 0.5 + this.rng.range(-0.25, 0.25), z: d.y + this.rng.range(1.3, 3.2) };
@@ -181,6 +239,27 @@ export class Sim {
 
   get onIsland(): number {
     return this.guests.filter((g) => g.state !== 'gone').length;
+  }
+
+  /** Parties still needing a room, in arrival order (the cards in the Guests panel). */
+  get queue(): Guest[] {
+    return this.guests.filter((g) => isUnhoused(g));
+  }
+
+  guest(id: number): Guest | undefined {
+    return this.guests.find((g) => g.id === id);
+  }
+
+  isRoom(b: Building): boolean {
+    return BUILDINGS[b.kind].family === 'rooms';
+  }
+
+  hasVacancy(b: Building): boolean {
+    return this.isRoom(b) && this.occupancy(b.id) < ROOMS_PER_BUILDING;
+  }
+
+  match(g: Guest, room: Building): Match {
+    return matchScore(this.paths, this.world, g, room);
   }
 
   occupancy(roomId: number): number {
@@ -278,8 +357,9 @@ export class Sim {
             g.waypoints = [{ x: g.x, z: g.z }, this.berth];
             g.wp = 0;
           }
-        const boarding = this.guests.some((g) => g.state === 'boarding');
-        if (!boarding && this.minutes >= FERRY_LEAVES) {
+        // It also waits while anyone is still queuing for a room, to take them home if they give up.
+        const busy = this.guests.some((g) => g.state === 'boarding' || isUnhoused(g));
+        if (!busy && this.minutes >= FERRY_LEAVES) {
           f.phase = 'leaving';
           this.emit({ type: 'ferryLeft' });
         }
@@ -294,11 +374,23 @@ export class Sim {
 
   private spawnGuest(): void {
     const type: GuestType = this.rng.next() < 0.55 ? 'backpacker' : 'couple';
-    const [lo, hi] = GUEST_TYPES[type].nights;
+    const def = GUEST_TYPES[type];
+    const [lo, hi] = def.nights;
+    const pool = [...def.wishPool];
+    const wishes: Wish[] = [];
+    for (let n = this.rng.int(...def.wishCount); n > 0 && pool.length; n--)
+      wishes.push(pool.splice(Math.floor(this.rng.next() * pool.length), 1)[0]);
     const b = this.berth;
+    const d = this.world.dock;
     const g: Guest = {
       id: this.nextGuestId++,
       type,
+      size: def.size,
+      budget: Math.round(this.rng.range(...def.budget) / 5) * 5,
+      tier: def.tier,
+      wishes,
+      patience: PATIENCE_SECONDS,
+      satisfaction: 50,
       roomId: null,
       nightsLeft: this.rng.int(lo, hi),
       leaving: false,
@@ -307,13 +399,13 @@ export class Sim {
       z: b.z,
       px: b.x,
       pz: b.z,
-      waypoints: this.pierWalk(false),
+      waypoints: [{ x: d.x + 0.5, z: d.y + 3.5 }, this.queueSpot()],
       wp: 0,
       goal: null,
       tile: null,
       insideId: null,
       timer: 0,
-      thought: 'What a view!',
+      thought: 'Which room is ours?',
       look: Math.floor(this.rng.next() * 1000),
     };
     this.guests.push(g);
@@ -330,6 +422,10 @@ export class Sim {
       case 'inside':
         g.timer -= dt;
         if (g.timer <= 0) this.exitBuilding(g);
+        return;
+      case 'queued':
+        g.patience -= dt;
+        if (g.patience <= 0) this.giveUp(g);
         return;
       case 'waiting':
       case 'gone':
@@ -365,9 +461,13 @@ export class Sim {
 
   private arrive(g: Guest): void {
     if (g.state === 'arriving') {
+      if (g.roomId === null) {
+        g.state = 'queued';
+        if (this.autoCheckIn) this.autoAssign(g);
+        return;
+      }
       g.state = 'walking';
       g.tile = { ...this.world.dock };
-      this.checkIn(g);
       return this.decide(g);
     }
     if (g.state === 'boarding') {
@@ -406,32 +506,66 @@ export class Sim {
     this.decide(g);
   }
 
-  /**
-   * Auto check-in (placeholder until M3's drag-to-room check-in): take the free
-   * room nearest the dock, or be turned away.
-   */
-  private checkIn(g: Guest): void {
-    let best: Building | null = null;
-    let bestD = Infinity;
-    const dock = this.world.dock;
+  // ---------- check-in (M3) ----------
+
+  /** Put a queued (or still arriving) party into a room. */
+  checkIn(guestId: number, roomId: number, auto = false): CheckInResult {
+    const g = this.guest(guestId);
+    if (!g || !isUnhoused(g)) return { ok: false, reason: 'They already have a room' };
+    const room = this.building(roomId);
+    if (!room || !this.isRoom(room)) return { ok: false, reason: 'That isn’t a room' };
+    if (!this.hasVacancy(room)) return { ok: false, reason: 'No free room there' };
+    const route = this.paths.route(`b${room.id}`, accessOf(this.world, room), this.world.dock);
+    if (!route) return { ok: false, reason: 'They can’t walk there' };
+
+    const score = Math.max(0, this.match(g, room).score - (auto ? AUTO_PENALTY : 0));
+    g.roomId = room.id;
+    g.satisfaction = score;
+    g.thought = score >= 75 ? 'This is perfect!' : score >= 50 ? 'This will do.' : 'Hmm, not what we hoped for.';
+    // Walk from wherever they stand on the pier onto the island.
+    const d = this.world.dock;
+    g.state = 'arriving';
+    g.waypoints = [
+      { x: d.x + 0.5, z: Math.min(g.z, d.y + 3.5) },
+      { x: d.x + 0.5, z: d.y + 1.2 },
+      { x: d.x + 0.5, z: d.y + 0.5 },
+    ];
+    g.wp = 0;
+    this.today.housed++;
+    this.emit({ type: 'checkedIn', guestId: g.id, roomId: room.id, score, auto });
+    return { ok: true, score };
+  }
+
+  /** Best free room for a party, or null. */
+  bestRoom(g: Guest): { room: Building; score: number } | null {
+    let best: { room: Building; score: number } | null = null;
     for (const b of this.world.buildings) {
-      if (BUILDINGS[b.kind].family !== 'rooms' || this.occupancy(b.id) >= ROOMS_PER_BUILDING) continue;
-      const d = this.paths.distance(`b${b.id}`, this.access(b), dock);
-      if (d < bestD) {
-        bestD = d;
-        best = b;
-      }
+      if (!this.hasVacancy(b)) continue;
+      const score = this.match(g, b).score;
+      if (!best || score > best.score) best = { room: b, score };
     }
-    if (best && Number.isFinite(bestD)) {
-      g.roomId = best.id;
-      this.today.housed++;
-      g.thought = 'Found my room!';
-    } else {
-      g.leaving = true;
-      g.thought = 'No rooms left? I’m going home.';
-      this.today.turnedAway++;
-      this.emit({ type: 'turnedAway', guestId: g.id });
-    }
+    return best;
+  }
+
+  private autoAssign(g: Guest): boolean {
+    const best = this.bestRoom(g);
+    return !!best && this.checkIn(g.id, best.room.id, true).ok;
+  }
+
+  /** Auto-assign every party in the queue. Returns how many got a room. */
+  autoCheckInAll(): number {
+    let n = 0;
+    for (const g of this.queue) if (this.autoAssign(g)) n++;
+    return n;
+  }
+
+  private giveUp(g: Guest): void {
+    g.leaving = true;
+    g.satisfaction = 0;
+    g.thought = 'We waited ages for a room. Never again!';
+    g.state = 'waiting';
+    this.today.turnedAway++;
+    this.emit({ type: 'gaveUp', guestId: g.id });
   }
 
   /** Pick what to do next and plan the walk there. */
@@ -529,7 +663,7 @@ export class Sim {
   }
 
   private access(b: Building): Tile[] {
-    return this.world.accessTiles(this.world.footprintTiles(b.kind, b.x, b.y, b.rot));
+    return accessOf(this.world, b);
   }
 
   private building(id: number): Building | undefined {
@@ -566,7 +700,7 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 1,
+      version: 2,
       minutes: this.minutes,
       rng: this.rng.state,
       nextGuestId: this.nextGuestId,
@@ -577,7 +711,7 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 1) throw new Error('Incompatible save');
+    if (s.version !== 2) throw new Error('Incompatible save');
     this.minutes = s.minutes;
     this.rng.state = s.rng;
     this.nextGuestId = s.nextGuestId;
@@ -590,7 +724,7 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 1,
+      version: 2,
       minutes: DAY_START,
       rng: 0x1234abcd,
       nextGuestId: 1,
@@ -599,6 +733,11 @@ export class Sim {
       today: emptyStats(),
     });
   }
+}
+
+/** Still needs a room: on the pier, or walking off the boat without one. */
+export function isUnhoused(g: Guest): boolean {
+  return !g.leaving && g.roomId === null && (g.state === 'queued' || g.state === 'arriving');
 }
 
 export function isMoving(g: Guest): boolean {

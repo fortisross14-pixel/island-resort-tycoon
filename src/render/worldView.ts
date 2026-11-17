@@ -4,9 +4,17 @@ import type { Tile, World } from '../sim/world';
 import { PALETTE, buildingModel, mat, palm, pathTile } from './models';
 import type { Stage } from './stage';
 
-export type HighlightTone = 'ok' | 'bad' | 'info';
+export type HighlightTone = 'ok' | 'warn' | 'bad' | 'info';
 
-const TONES: Record<HighlightTone, string> = { ok: '#4fe07a', bad: '#ff5a4f', info: '#ffffff' };
+const TONES: Record<HighlightTone, string> = { ok: '#4fe07a', warn: '#ffc93c', bad: '#ff5a4f', info: '#ffffff' };
+
+/** One room's check-in preview: a plate around the footprint and a score bubble above the roof. */
+export interface RoomMark {
+  id: number;
+  tiles: Tile[];
+  tone: HighlightTone;
+  label: string;
+}
 
 /** Keeps the Three.js scene in sync with the World and draws build previews. */
 export class WorldView {
@@ -14,6 +22,8 @@ export class WorldView {
   private buildingsGroup = new THREE.Group();
   private ghostGroup = new THREE.Group();
   private highlightGroup = new THREE.Group();
+  private marksGroup = new THREE.Group();
+  private marks = new Map<number, THREE.Sprite>();
   private grid: THREE.LineSegments;
   private ghostMats: Record<'ok' | 'bad', THREE.MeshBasicMaterial> = {
     ok: new THREE.MeshBasicMaterial({ color: TONES.ok, transparent: true, opacity: 0.55, depthWrite: false }),
@@ -22,6 +32,7 @@ export class WorldView {
   private tileMats: Record<HighlightTone, THREE.MeshBasicMaterial> = {
     ok: new THREE.MeshBasicMaterial({ color: TONES.ok, transparent: true, opacity: 0.45, depthWrite: false }),
     bad: new THREE.MeshBasicMaterial({ color: TONES.bad, transparent: true, opacity: 0.45, depthWrite: false }),
+    warn: new THREE.MeshBasicMaterial({ color: TONES.warn, transparent: true, opacity: 0.5, depthWrite: false }),
     info: new THREE.MeshBasicMaterial({ color: TONES.info, transparent: true, opacity: 0.3, depthWrite: false }),
   };
   private tileGeo = new THREE.PlaneGeometry(0.96, 0.96).rotateX(-Math.PI / 2);
@@ -32,7 +43,7 @@ export class WorldView {
   ) {
     const s = stage.scene;
     this.buildEnvironment();
-    s.add(this.pathsGroup, this.buildingsGroup, this.highlightGroup, this.ghostGroup);
+    s.add(this.pathsGroup, this.buildingsGroup, this.highlightGroup, this.marksGroup, this.ghostGroup);
     this.grid = this.makeGrid();
     this.grid.visible = false;
     s.add(this.grid);
@@ -179,6 +190,50 @@ export class WorldView {
     this.stage.requestRender();
   }
 
+  /** Show check-in previews for rooms (replaces any previous set). */
+  showRoomMarks(marks: RoomMark[]): void {
+    this.clearRoomMarks();
+    for (const mk of marks) {
+      const xs = mk.tiles.map((t) => t.x);
+      const ys = mk.tiles.map((t) => t.y);
+      const x0 = Math.min(...xs);
+      const y0 = Math.min(...ys);
+      const w = Math.max(...xs) - x0 + 1;
+      const h = Math.max(...ys) - y0 + 1;
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.3, h + 0.3).rotateX(-Math.PI / 2), this.tileMats[mk.tone]);
+      plate.position.set(x0 + w / 2, 0.04, y0 + h / 2);
+      plate.renderOrder = 2;
+      this.marksGroup.add(plate);
+      const sprite = labelSprite(mk.label, TONES[mk.tone]);
+      sprite.position.set(x0 + w / 2, 2.0, y0 + h / 2);
+      this.marksGroup.add(sprite);
+      this.marks.set(mk.id, sprite);
+    }
+    this.stage.requestRender();
+  }
+
+  /** Enlarge one room's bubble (the room under the finger while dragging). */
+  focusRoomMark(id: number | null): void {
+    for (const [k, sp] of this.marks) {
+      const f = k === id ? 1.35 : 1;
+      sp.scale.set(sp.userData.w * f, sp.userData.h * f, 1);
+    }
+    this.stage.requestRender();
+  }
+
+  clearRoomMarks(): void {
+    if (!this.marksGroup.children.length) return;
+    for (const c of [...this.marksGroup.children]) {
+      if (c instanceof THREE.Sprite) {
+        c.material.map?.dispose();
+        c.material.dispose();
+      }
+    }
+    clear(this.marksGroup);
+    this.marks.clear();
+    this.stage.requestRender();
+  }
+
   highlight(tiles: Tile[], tone: HighlightTone): void {
     clear(this.highlightGroup);
     for (const t of tiles) {
@@ -207,6 +262,58 @@ function clear(g: THREE.Group): void {
       if (o instanceof THREE.Mesh && o.geometry !== undefined) o.geometry.dispose();
     });
   }
+}
+
+/** A rounded speech-bubble label drawn on a canvas, always facing the camera. */
+function labelSprite(text: string, color: string): THREE.Sprite {
+  const scale = 4;
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d')!;
+  const font = `800 ${15 * scale}px ui-rounded, system-ui, sans-serif`;
+  ctx.font = font;
+  const tw = ctx.measureText(text).width;
+  const pad = 9 * scale;
+  c.width = Math.ceil(tw + pad * 2);
+  c.height = 30 * scale + 8 * scale;
+  ctx.font = font;
+  const bh = 30 * scale;
+  ctx.fillStyle = 'rgba(20, 50, 58, 0.25)';
+  roundRect2d(ctx, 0, 3 * scale, c.width, bh, bh / 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  roundRect2d(ctx, 0, 0, c.width, bh, bh / 2);
+  ctx.fill();
+  // Little pointer under the bubble.
+  ctx.beginPath();
+  ctx.moveTo(c.width / 2 - 6 * scale, bh - 1);
+  ctx.lineTo(c.width / 2 + 6 * scale, bh - 1);
+  ctx.lineTo(c.width / 2, bh + 7 * scale);
+  ctx.fill();
+  ctx.fillStyle = color === TONES.warn || color === TONES.info ? '#23404a' : '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, c.width / 2, bh / 2 + scale);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sp = new THREE.Sprite(m);
+  const h = 0.62;
+  const w = (h * c.width) / c.height;
+  sp.scale.set(w, h, 1);
+  sp.userData = { w, h };
+  sp.center.set(0.5, 0);
+  sp.renderOrder = 10;
+  return sp;
+}
+
+function roundRect2d(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function roundedRect(x: number, y: number, w: number, h: number, r: number): THREE.Shape {

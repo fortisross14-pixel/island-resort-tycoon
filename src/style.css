@@ -218,4 +218,96 @@ button:disabled { cursor: default; opacity: 0.45; }
   .menu { padding: 3px 9px; font-size: 15px; }
   .coins { font-size: 14px; }
   .card { width: 80px; }
+  .card.guest .name { font-size: 12px; }
 }
+
+/* ---------- tabs + guest cards (M3) ---------- */
+.toolbar.hidden { display: none; }
+.tabs {
+  display: flex;
+  gap: 4px;
+  align-self: center;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  padding: 3px;
+  box-shadow: 0 2px 8px rgba(20, 60, 70, 0.12);
+}
+.tabs button {
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tabs button.on { background: var(--ink); color: #fff; }
+.badge:empty { display: none; }
+.badge {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 18px;
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 16px;
+}
+.tray[hidden] { display: none; }
+.guest-tray { align-items: stretch; min-height: 116px; }
+.guest-cards { display: flex; gap: 8px; }
+.empty {
+  align-self: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  padding: 0 12px;
+  white-space: nowrap;
+}
+.empty[hidden] { display: none; }
+.card.auto { color: var(--ink-soft); background: #f3f7f6; }
+.card.guest { padding-bottom: 9px; }
+.card.guest .icon { width: 40px; height: 34px; }
+.card .sub .coin-icon { width: 9px; height: 9px; vertical-align: -1px; }
+.wishes { display: flex; gap: 3px; min-height: 18px; margin-top: 2px; }
+.wish {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: #eef5f3;
+  display: grid;
+  place-items: center;
+}
+.wish svg { width: 14px; height: 14px; }
+.patience {
+  width: 70%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(35, 64, 74, 0.12);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.patience i { display: block; height: 100%; background: var(--good); border-radius: 2px; }
+.patience i.urgent { background: var(--bad); }
+
+.chip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--ink);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.chip.show { opacity: 1; }
+.chip[data-tone='ok'] { background: var(--good); }
+.chip[data-tone='warn'] { background: #ffc93c; color: var(--ink); }
+.chip[data-tone='bad'] { background: var(--bad); }

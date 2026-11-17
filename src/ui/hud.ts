@@ -1,4 +1,6 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, type BuildingKind } from '../sim/buildings';
+import { WISHES, type Wish } from '../sim/match';
+import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
 export type TrayItem = BuildingKind | 'path';
 
@@ -10,6 +12,25 @@ export interface HudHandlers {
   onCancel(): void;
   onNewIsland(): void;
   onSpeed(speed: Speed): void;
+  onTab(tab: Tab): void;
+  onGuestDown(id: number, e: PointerEvent): void;
+  onAutoAssign(): void;
+}
+
+export type Tab = 'build' | 'guests';
+
+const WISH_ICONS: Record<Wish, string> = {
+  snacks: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="#ffe2bd"/><path d="M2 7 L4 3 H12 L14 7 Z" fill="#f2b441"/></svg>',
+  buffet: '<svg viewBox="0 0 16 16"><path d="M1 7 L4 4 H12 L15 7 Z" fill="#3fa7a0"/><rect x="2" y="7" width="12" height="6" fill="#fff4e2" stroke="#d9c4a0" stroke-width=".6"/></svg>',
+  quiet: '<svg viewBox="0 0 16 16"><path d="M11 2.5 A6 6 0 1 0 13.5 11 A4.6 4.6 0 0 1 11 2.5 Z" fill="#6b7fd6"/></svg>',
+  shortWalk: '<svg viewBox="0 0 16 16"><path d="M2 10 H14 L12 13 H4 Z" fill="#a8754a"/><rect x="7.2" y="3" width="1.6" height="7" fill="#7d5534"/><path d="M8.8 3.5 L13 7 H8.8 Z" fill="#fff"/></svg>',
+};
+
+function peopleIcon(g: Guest): string {
+  const shirt = g.type === 'couple' ? ['#ff7aa8', '#b38cf0'] : ['#ff9f43'];
+  const fig = (x: number, c: string) =>
+    `<circle cx="${x}" cy="9" r="4" fill="#f4cfa8"/><path d="M${x - 6} 26 Q${x - 6} 14 ${x} 14 Q${x + 6} 14 ${x + 6} 26 Z" fill="${c}"/>`;
+  return `<svg viewBox="0 0 32 28">${g.size === 2 ? fig(11, shirt[0]) + fig(21, shirt[1]) : fig(16, shirt[0])}</svg>`;
 }
 
 /** 0 = paused. */
@@ -39,6 +60,17 @@ export class Hud {
   private timeEl: HTMLElement;
   private guestsEl: HTMLElement;
   private speedBtns: HTMLButtonElement[];
+  private tabBtns: HTMLButtonElement[];
+  private buildTray: HTMLElement;
+  private guestTray: HTMLElement;
+  private guestCards: HTMLElement;
+  private emptyEl: HTMLElement;
+  private badgeEl: HTMLElement;
+  private chipEl: HTMLElement;
+  private queueKey = '';
+  private patienceBars = new Map<number, HTMLElement>();
+  private guestEls = new Map<number, HTMLElement>();
+  private handlers: HudHandlers;
   private toastTimer = 0;
 
   constructor(root: HTMLElement, h: HudHandlers) {
@@ -62,9 +94,32 @@ export class Hud {
           <button data-undo title="Undo (Ctrl+Z)">↶ Undo</button>
           <button data-cancel class="done" title="Done (Esc)">Done</button>
         </div>
+        <div class="tabs" role="tablist">
+          <button data-tab="build" role="tab" class="on">Build</button>
+          <button data-tab="guests" role="tab">Guests <span class="badge" data-badge></span></button>
+        </div>
         <nav class="tray" data-tray></nav>
+        <div class="tray guest-tray" data-guest-tray hidden>
+          <button class="card auto" data-auto title="Place everyone in their best free room (−10 match)">
+            <span class="icon"><svg viewBox="0 0 32 32"><path d="M6 16 a10 10 0 0 1 17-7 l3-3 v9 h-9 l3-3 a6 6 0 1 0 2 6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
+            <span class="name">Auto-assign</span><span class="sub">Best free rooms</span><span class="sub">−10 match</span>
+          </button>
+          <div class="guest-cards" data-guest-cards></div>
+          <div class="empty" data-empty>No one is waiting. The ferry docks at 08:00.</div>
+        </div>
+        <div class="chip" data-chip></div>
       </footer>`;
+    this.handlers = h;
     const q = <T extends HTMLElement>(sel: string) => root.querySelector(sel) as T;
+    this.tabBtns = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    for (const b of this.tabBtns) b.addEventListener('click', () => h.onTab(b.dataset.tab as Tab));
+    this.buildTray = q('[data-tray]');
+    this.guestTray = q('[data-guest-tray]');
+    this.guestCards = q('[data-guest-cards]');
+    this.emptyEl = q('[data-empty]');
+    this.badgeEl = q('[data-badge]');
+    this.chipEl = q('[data-chip]');
+    q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
     this.coinsEl = q('[data-coins]');
     this.hintEl = q('[data-hint]');
     this.toastEl = q('[data-toast]');
@@ -112,6 +167,70 @@ export class Hud {
 
   setSpeed(speed: Speed): void {
     for (const b of this.speedBtns) b.classList.toggle('on', Number(b.dataset.speed) === speed);
+  }
+
+  setTab(tab: Tab): void {
+    for (const b of this.tabBtns) b.classList.toggle('on', b.dataset.tab === tab);
+    this.buildTray.hidden = tab !== 'build';
+    this.guestTray.hidden = tab !== 'guests';
+    this.toolbar.classList.toggle('hidden', tab !== 'build');
+  }
+
+  /** Rebuild the arrival cards when the queue changes; cheap to call every frame. */
+  setQueue(queue: Guest[]): void {
+    const key = queue.map((g) => g.id).join(',');
+    if (key !== this.queueKey) {
+      this.queueKey = key;
+      this.guestCards.textContent = '';
+      this.patienceBars.clear();
+      this.guestEls.clear();
+      for (const g of queue) this.guestCards.appendChild(this.guestCard(g));
+      this.emptyEl.hidden = queue.length > 0;
+      this.badgeEl.textContent = queue.length ? String(queue.length) : '';
+      this.guestTray.querySelector<HTMLButtonElement>('[data-auto]')!.disabled = queue.length === 0;
+    }
+    for (const g of queue) {
+      const bar = this.patienceBars.get(g.id);
+      if (!bar) continue;
+      const f = Math.max(0, g.patience / PATIENCE_SECONDS);
+      bar.style.width = `${(f * 100).toFixed(1)}%`;
+      bar.classList.toggle('urgent', f < 0.3);
+    }
+  }
+
+  setSelectedGuest(id: number | null): void {
+    for (const [gid, el] of this.guestEls) el.classList.toggle('active', gid === id);
+  }
+
+  private guestCard(g: Guest): HTMLElement {
+    const def = GUEST_TYPES[g.type];
+    const b = document.createElement('button');
+    b.className = 'card guest';
+    const wishes = g.wishes
+      .map((w) => `<span class="wish" title="${WISHES[w].label}">${WISH_ICONS[w]}</span>`)
+      .join('');
+    b.innerHTML = `<span class="icon">${peopleIcon(g)}</span><span class="name">${def.name}</span><span class="sub">${g.nightsLeft} night${g.nightsLeft === 1 ? '' : 's'} · <span class="coin-icon"></span>${g.budget}</span><span class="wishes">${wishes}</span><span class="patience"><i></i></span>`;
+    b.title = `${def.name}: wants ${g.wishes.map((w) => WISHES[w].label.toLowerCase()).join(', ')}`;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.handlers.onGuestDown(g.id, e);
+    });
+    this.patienceBars.set(g.id, b.querySelector<HTMLElement>('.patience i')!);
+    this.guestEls.set(g.id, b);
+    return b;
+  }
+
+  /** A label that follows the finger while a guest card is dragged. */
+  showChip(text: string, tone: 'ok' | 'warn' | 'bad' | 'info', x: number, y: number): void {
+    const c = this.chipEl;
+    c.textContent = text;
+    c.dataset.tone = tone;
+    c.style.transform = `translate(${Math.round(x)}px, ${Math.round(y - 64)}px) translateX(-50%)`;
+    c.classList.add('show');
+  }
+
+  hideChip(): void {
+    this.chipEl.classList.remove('show');
   }
 
   setCoins(n: number): void {

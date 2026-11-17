@@ -14,8 +14,8 @@ unit tested and a playtest harness can drive it headless in M6.
 |---|-----------|--------|
 | M1 | Island and construction | **Done** |
 | M2 | Clock, ferry and walkers | **Done** |
-| M3 | Check-in | Next |
-| M4 | Needs and spending | Planned |
+| M3 | Check-in | **Done** |
+| M4 | Needs and spending | Next |
 | M5 | Economy, night report and reviews | Planned |
 | M6 | Playtest build | Planned |
 
@@ -67,16 +67,23 @@ Placeholder until M3: arriving guests are checked in automatically to the free r
 dock, and anyone without a room is turned away. The night between 23:00 and 07:00 is skipped
 until the night report (M5).
 
-## M3 — Check-in
+## M3 — Check-in ✅
 
 Goal: the player's main action.
 
-- Each arriving guest shows as a card: type (Backpacker or Couple), budget, length of stay and wishes as icons
-- Arrivals queue panel (the "Guests" tab)
-- Drag a card onto Basic Rooms to check in; rooms that suit the guest light up while you drag
-- Room capacity (2 rooms per Basic Rooms, 1 floor)
-- Match score: budget against room tier, wishes against nearby amenities
-- Unhoused guests wait at the dock and leave unhappy after a timeout
+- [x] Arriving parties queue on the pier; each is a card in the **Guests** tab: type, nights, nightly budget, wishes as icons, and a patience bar
+- [x] A Backpacker is one person; a Couple is a party of two sharing one room (Basic Rooms holds 2 parties)
+- [x] Drag a card onto a room to check in, or tap a card and then tap a room
+- [x] While a card is selected, every room shows a score bubble (green, yellow or red, or grey when full); the room under your finger shows why
+- [x] Match score (0–100): budget against room tier, plus each wish: Snack Bar nearby, Buffet nearby, quiet (no food within 2 tiles), short walk from the dock
+- [x] The score becomes the party's starting satisfaction (used from M4)
+- [x] Unplaced parties give up after 2 game hours, wait on the pier, and leave on the ferry, which waits for them
+- [x] After a check-in the next card is selected, and the tray switches back to Build when the queue is empty
+- [x] Auto-assign button (stand-in for the Front Desk unlock): best free room for everyone, always 10 points worse than placing by hand
+- [x] Tap a queued guest on the pier to pick their card; tap a room to see how many rooms are taken
+
+Couples expect a tier-2 room, so they always lose a few points in Basic Rooms until Standard
+Rooms arrive in the vertical slice. That is deliberate: it shows the tier system working.
 
 ## M4 — Needs and spending
 
