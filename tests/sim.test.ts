@@ -251,6 +251,8 @@ describe('check-in (M3)', () => {
 
   it('hand placement beats auto check-in by the auto penalty', () => {
     const w = starterResort();
+    w.money += 5000;
+    expect(w.placeBuilding('frontDesk', w.dock.x - 2, 4, 0).ok).toBe(true);
     const hand = new Sim(w);
     untilQueued(hand);
     const g = hand.queue[0];

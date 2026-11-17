@@ -124,10 +124,15 @@ Goal: one full day loop with consequences.
 - [x] Saves keep reviews, room rates and a pending night report
 - [x] Money can go negative (shown in red); the GDD's investor rescue belongs to Pass 1
 
-## Pass 1 — Depth and scenarios
+## Pass 1 — Depth and scenarios (in progress)
 
-More to build and more reasons to build it: further buildings and guest types from the GDD,
-land plots, stacked floors, research and scenario goals. Scope to be set after M5.
+More to build and more reasons to build it. The full building plan is in
+[CATALOGUE.md](CATALOGUE.md): every building has an unlock tier and a separate quality class.
+
+1. ✅ **Land.** The map is 28×28 in 7×7 plots; you start with the middle 14×14. Buy plots that border your land (from 3,000, ×1.35 each); they rise out of the sea. The harbour plot in front of the dock is never for sale.
+2. ✅ **Catalogue and tier 1.** Quality classes; Standard Rooms, Beach Bar (shore only), Gift Shop, Pool (free) and Front Desk (enables auto-assign, longer patience). New wishes: pool and bar. Guests who balk at a price skip that venue for the rest of the day.
+3. ⏳ **Research and unlocks.** Research points from reviews; buildings locked by tier (and star rating for premium); tier 2: themed restaurants, Garden Bungalows, Gym, Spa, Boutique, Dive Shop.
+4. ⏳ **More guest types, stacked floors, scenarios and goals, investor rescue.**
 
 ## Pass 2 — Balance
 

@@ -19,7 +19,7 @@ export type Meters = Record<Need, number>;
 export const DECAY: Meters = { hunger: 0.55, fun: 0.45, rest: 0.3, comfort: 0.22 };
 
 /** Fun gained from a stroll to somewhere new on the island. */
-export const STROLL_FUN = 22;
+export const STROLL_FUN = 14;
 /** Rest gained from a nap in the room during the day. */
 export const NAP_REST = 45;
 
@@ -49,6 +49,10 @@ export interface VenueDef {
 export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 10, bonus: { fun: 5 } },
   buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 25, bonus: { comfort: 5 } },
+  beachBar: { need: 'fun', gain: 40, capacity: 4, service: 4, lineMax: 4, basePrice: 12, bonus: { hunger: 5 } },
+  giftShop: { need: 'fun', gain: 25, capacity: 3, service: 3, lineMax: 3, basePrice: 18 },
+  // Free to use: it earns through happier guests and better reviews (GDD "Free (appeal)").
+  pool: { need: 'fun', gain: 35, capacity: 10, service: 7, lineMax: 6, basePrice: 0, bonus: { comfort: 25 } },
 };
 
 /** Sim seconds a guest will stand in a line before walking off. */

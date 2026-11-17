@@ -1,5 +1,5 @@
 import { BUILDINGS } from './buildings';
-import { AUTO_PENALTY, ROOM_TIER, accessOf, matchScore, type Match, type Wish } from './match';
+import { AUTO_PENALTY, accessOf, matchScore, roomTier, type Match, type Wish } from './match';
 import {
   DECAY,
   DEFAULT_PRICE,
@@ -79,7 +79,7 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     budget: [40, 70],
     spend: [35, 60],
     tier: 1,
-    wishPool: ['snacks', 'shortWalk'],
+    wishPool: ['snacks', 'shortWalk', 'bar'],
     wishCount: [1, 1],
   },
   couple: {
@@ -89,7 +89,7 @@ export const GUEST_TYPES: Record<GuestType, GuestTypeDef> = {
     budget: [90, 140],
     spend: [110, 170],
     tier: 2,
-    wishPool: ['buffet', 'quiet', 'snacks'],
+    wishPool: ['buffet', 'quiet', 'snacks', 'pool'],
     wishCount: [1, 2],
   },
 };
@@ -132,8 +132,10 @@ export interface Guest {
   /** Coins left to spend today, and spent so far today. */
   wallet: number;
   spentToday: number;
-  /** A venue they just declined (too pricey or too busy), skipped on the next choice. */
+  /** A venue they just declined (too busy), skipped on the next choice. */
   avoid: number | null;
+  /** Venues they found too pricey today; they won't go back until tomorrow. */
+  declined: number[];
   /** Highlights and complaints for their review. */
   memories: Memory[];
   /** Building id of their room, or null when unhoused. */
@@ -383,7 +385,12 @@ export class Sim {
   }
 
   roomTier(b: Building): number {
-    return ROOM_TIER[b.kind] ?? 1;
+    return roomTier(b.kind);
+  }
+
+  /** A Front Desk unlocks auto check-in and makes arrivals wait longer (GDD "Reception / Front Desk"). */
+  get hasFrontDesk(): boolean {
+    return this.world.buildings.some((b) => b.kind === 'frontDesk');
   }
 
   /** Nightly rate per party for a room building. */
@@ -558,6 +565,7 @@ export class Sim {
         g.needs.hunger = Math.max(0, g.needs.hunger - 25);
         g.wallet = this.dailySpend(g);
         g.spentToday = 0;
+        g.declined = [];
       }
       if (g.nightsLeft <= 0 && g.roomId !== null) {
         g.leaving = true;
@@ -660,7 +668,7 @@ export class Sim {
       budget: Math.round(this.rng.range(...def.budget) / 5) * 5,
       tier: def.tier,
       wishes,
-      patience: PATIENCE_SECONDS,
+      patience: PATIENCE_SECONDS * (this.hasFrontDesk ? 1.5 : 1),
       satisfaction: 50,
       roomScore: 50,
       needs: {
@@ -672,6 +680,7 @@ export class Sim {
       wallet: 0,
       spentToday: 0,
       avoid: null,
+      declined: [],
       memories: [],
       roomId: null,
       nightsLeft: this.rng.int(lo, hi),
@@ -814,8 +823,13 @@ export class Sim {
     const v = this.venue(b.id);
     const price = priceOf(b.kind, v.price) * g.size;
     const name = BUILDINGS[b.kind].name;
-    if (g.wallet < price) return this.walkAway(g, b, v, `Can’t afford the ${name}.`, 2);
-    if (this.rng.next() > buyChance(g.type, v.price)) return this.walkAway(g, b, v, `The ${name} is too pricey!`, 4);
+    if (price > 0) {
+      if (g.wallet < price) return this.walkAway(g, b, v, `Can’t afford the ${name}.`, 2);
+      if (this.rng.next() > buyChance(g.type, v.price)) {
+        g.declined.push(b.id);
+        return this.walkAway(g, b, v, `The ${name} is too pricey!`, 4);
+      }
+    }
     if (v.serving < def.capacity) return this.serve(g, b, v);
     if (v.line.length >= def.lineMax) return this.walkAway(g, b, v, `The line at the ${name} is huge!`, 4);
     v.line.push(g.id);
@@ -858,13 +872,26 @@ export class Sim {
       g.needs[k] = Math.min(100, g.needs[k] + (add ?? 0));
     }
     // A bargain pleases; a steep price stings a little even when they pay it.
-    g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + (v.price <= 2 ? 3 : -2)));
+    let mood = price === 0 || v.price <= 2 ? 3 : -2;
+    // Richer guests notice a budget venue (quality class below their tier).
+    if (BUILDINGS[b.kind].quality < g.tier) {
+      mood -= 2;
+      this.remember(g, b.id, -3, `the ${name} felt a bit basic`);
+    }
+    g.satisfaction = Math.max(0, Math.min(100, g.satisfaction + mood));
     g.state = 'inside';
     g.insideId = b.id;
     g.timer = def.service * this.rng.range(0.85, 1.15);
     g.avoid = null;
-    g.thought = v.price <= 1 ? `Great prices at the ${BUILDINGS[b.kind].name}!` : `Eating at the ${BUILDINGS[b.kind].name}.`;
-    this.emit({ type: 'purchase', guestId: g.id, buildingId: b.id, amount: price });
+    g.thought =
+      price === 0
+        ? `Splashing about in the ${name}!`
+        : v.price <= 1
+          ? `Great prices at the ${name}!`
+          : def.need === 'hunger'
+            ? `Eating at the ${name}.`
+            : `Having fun at the ${name}.`;
+    if (price > 0) this.emit({ type: 'purchase', guestId: g.id, buildingId: b.id, amount: price });
   }
 
   private leaveLine(g: Guest): void {
@@ -960,8 +987,9 @@ export class Sim {
     return !!best && this.checkIn(g.id, best.room.id, true).ok;
   }
 
-  /** Auto-assign every party in the queue. Returns how many got a room. */
+  /** Auto-assign every party in the queue (needs a Front Desk). Returns how many got a room. */
   autoCheckInAll(): number {
+    if (!this.hasFrontDesk && !this.autoCheckIn) return 0;
     let n = 0;
     for (const g of this.queue) if (this.autoAssign(g)) n++;
     return n;
@@ -1017,7 +1045,7 @@ export class Sim {
 
     for (const b of this.world.buildings) {
       const def = VENUES[b.kind];
-      if (!def || !from || b.id === g.avoid) continue;
+      if (!def || !from || b.id === g.avoid || g.declined.includes(b.id)) continue;
       const key = `b${b.id}`;
       const goals = this.access(b);
       const d = this.paths.distance(key, goals, from);
@@ -1025,6 +1053,7 @@ export class Sim {
       const v = this.venue(b.id);
       const deficit = 100 - m[def.need];
       let u = Math.min(def.gain, deficit) * (deficit > 30 ? 1 : 0.3);
+      for (const [n, add] of Object.entries(def.bonus ?? {})) u += Math.min(add ?? 0, 100 - m[n as keyof Meters]) * 0.5;
       u *= 1 / (1 + d / 8);
       // The 12-tile rule is measured from their room's door.
       if (room && this.roomDistance(room, key, goals) > FAR_TILES) u *= FAR_FACTOR;
@@ -1041,7 +1070,8 @@ export class Sim {
     }
 
     const tiles = this.world.pathTiles();
-    out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.7 + 6 });
+    // A stroll is the free fallback for fun: always possible, but less fun than a venue.
+    out.push({ goal: { kind: 'tile', tile: this.rng.pick(tiles) }, utility: (100 - m.fun) * 0.3 + 5 });
     return out;
   }
 

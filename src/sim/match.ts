@@ -8,21 +8,25 @@ import type { Building, Tile, World } from './world';
  * HUD can preview a score for every room while a guest card is being dragged.
  */
 
-export type Wish = 'snacks' | 'buffet' | 'quiet' | 'shortWalk';
+export type Wish = 'snacks' | 'buffet' | 'quiet' | 'shortWalk' | 'pool' | 'bar';
 
 export const WISHES: Record<Wish, { label: string; met: string; unmet: string }> = {
   snacks: { label: 'Snack Bar nearby', met: 'Snack Bar close by', unmet: 'No Snack Bar nearby' },
   buffet: { label: 'Buffet nearby', met: 'Buffet close by', unmet: 'No Buffet nearby' },
   quiet: { label: 'Quiet spot', met: 'Nice and quiet', unmet: 'Too close to the kitchens' },
   shortWalk: { label: 'Short walk from the dock', met: 'Close to the dock', unmet: 'Long walk from the dock' },
+  pool: { label: 'Pool nearby', met: 'Pool close by', unmet: 'No pool nearby' },
+  bar: { label: 'Beach Bar nearby', met: 'Beach Bar close by', unmet: 'No Beach Bar nearby' },
 };
 
-/** Room tier per room building (Standard Rooms and Suites join in the vertical slice). */
-export const ROOM_TIER: Partial<Record<BuildingKind, number>> = { basicRooms: 1 };
+/** Room tier of a room building: its quality class (Basic 1, Standard 2, …). */
+export function roomTier(kind: BuildingKind): number {
+  return BUILDINGS[kind].quality;
+}
 
 /** Path tiles from a room's door to count as "nearby". */
 export const NEARBY_TILES = 6;
-/** Food buildings within this many tiles (any direction) make a room noisy. */
+/** Noisy buildings within this many tiles (any direction) make a room noisy. */
 export const NOISE_RADIUS = 2;
 /** Hand placement always scores this much better than auto check-in (GDD). */
 export const AUTO_PENALTY = 10;
@@ -64,7 +68,7 @@ function nearKind(paths: PathGraph, world: World, room: Building, kind: Building
 function isQuiet(world: World, room: Building): boolean {
   const tiles = world.footprintTiles(room.kind, room.x, room.y, room.rot);
   for (const b of world.buildings) {
-    if (BUILDINGS[b.kind].family !== 'food') continue;
+    if (!BUILDINGS[b.kind].noisy) continue;
     for (const f of world.footprintTiles(b.kind, b.x, b.y, b.rot))
       for (const t of tiles) if (Math.max(Math.abs(f.x - t.x), Math.abs(f.y - t.y)) <= NOISE_RADIUS) return false;
   }
@@ -79,6 +83,10 @@ export function wishMet(paths: PathGraph, world: World, room: Building, wish: Wi
       return nearKind(paths, world, room, 'buffet');
     case 'quiet':
       return isQuiet(world, room);
+    case 'pool':
+      return nearKind(paths, world, room, 'pool');
+    case 'bar':
+      return nearKind(paths, world, room, 'beachBar');
     case 'shortWalk':
       return doorDistance(paths, world, room, 'dock', [world.dock]) <= NEARBY_TILES;
   }
@@ -91,7 +99,7 @@ export function wishMet(paths: PathGraph, world: World, room: Building, wish: Wi
 export function matchScore(paths: PathGraph, world: World, guest: Matchable, room: Building, rate?: number): Match {
   const notes: MatchNote[] = [];
   let score = 60;
-  const tier = ROOM_TIER[room.kind] ?? 1;
+  const tier = roomTier(room.kind);
   const gap = guest.tier - tier;
   if (gap > 0) {
     score -= 12 * gap;

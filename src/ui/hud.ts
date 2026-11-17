@@ -1,4 +1,4 @@
-import { BUILDINGS, BUILDING_KINDS, PATH_COST, type BuildingKind } from '../sim/buildings';
+import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
 import { WISHES, type Wish } from '../sim/match';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
@@ -23,6 +23,8 @@ const WISH_ICONS: Record<Wish, string> = {
   snacks: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="#ffe2bd"/><path d="M2 7 L4 3 H12 L14 7 Z" fill="#f2b441"/></svg>',
   buffet: '<svg viewBox="0 0 16 16"><path d="M1 7 L4 4 H12 L15 7 Z" fill="#3fa7a0"/><rect x="2" y="7" width="12" height="6" fill="#fff4e2" stroke="#d9c4a0" stroke-width=".6"/></svg>',
   quiet: '<svg viewBox="0 0 16 16"><path d="M11 2.5 A6 6 0 1 0 13.5 11 A4.6 4.6 0 0 1 11 2.5 Z" fill="#6b7fd6"/></svg>',
+  pool: '<svg viewBox="0 0 16 16"><rect x="2" y="4" width="12" height="9" rx="2" fill="#4fc6e8"/><path d="M3 9 q2.5 -2 5 0 t5 0" stroke="#fff" stroke-width="1.2" fill="none"/></svg>',
+  bar: '<svg viewBox="0 0 16 16"><path d="M2 7 L8 2 L14 7 Z" fill="#d9b46a"/><rect x="4" y="7" width="8" height="6" fill="#a8754a"/></svg>',
   shortWalk: '<svg viewBox="0 0 16 16"><path d="M2 10 H14 L12 13 H4 Z" fill="#a8754a"/><rect x="7.2" y="3" width="1.6" height="7" fill="#7d5534"/><path d="M8.8 3.5 L13 7 H8.8 Z" fill="#fff"/></svg>',
 };
 
@@ -45,6 +47,15 @@ const ICONS: Record<TrayItem, string> = {
     '<svg viewBox="0 0 32 32"><rect x="6" y="15" width="20" height="12" fill="#ffe2bd"/><path d="M4 15 L8 8 H24 L28 15 Z" fill="#f2b441"/><path d="M10 8 L8 15 M16 8 V15 M22 8 L24 15" stroke="#fff" stroke-width="2"/></svg>',
   buffet:
     '<svg viewBox="0 0 32 32"><path d="M2 14 L8 8 H24 L30 14 Z" fill="#3fa7a0"/><rect x="4" y="14" width="24" height="12" fill="#fff4e2"/><rect x="7" y="18" width="18" height="4" fill="#a8754a"/></svg>',
+  standardRooms:
+    '<svg viewBox="0 0 32 32"><path d="M4 12 L16 4 L28 12 Z" fill="#3fa7a0"/><rect x="7" y="12" width="18" height="15" fill="#ffe2bd"/><rect x="10" y="15" width="4" height="3" fill="#3b6e8f"/><rect x="18" y="15" width="4" height="3" fill="#3b6e8f"/><rect x="10" y="21" width="4" height="6" fill="#7d5534"/><rect x="18" y="21" width="4" height="3" fill="#3b6e8f"/></svg>',
+  beachBar:
+    '<svg viewBox="0 0 32 32"><path d="M2 14 L16 5 L30 14 Z" fill="#d9b46a"/><rect x="6" y="14" width="2" height="12" fill="#9b6b43"/><rect x="24" y="14" width="2" height="12" fill="#9b6b43"/><rect x="9" y="19" width="14" height="5" fill="#7d5534"/></svg>',
+  giftShop:
+    '<svg viewBox="0 0 32 32"><rect x="7" y="13" width="18" height="14" fill="#ffe7f0"/><path d="M5 13 L8 8 H24 L27 13 Z" fill="#ff7aa8"/><rect x="11" y="17" width="10" height="6" fill="#3b6e8f"/></svg>',
+  pool: '<svg viewBox="0 0 32 32"><rect x="3" y="8" width="26" height="18" rx="3" fill="#f3e6cc"/><rect x="6" y="11" width="20" height="12" rx="2" fill="#4fc6e8"/><path d="M8 18 q4 -3 8 0 t8 0" stroke="#fff" stroke-width="2" fill="none"/></svg>',
+  frontDesk:
+    '<svg viewBox="0 0 32 32"><rect x="5" y="12" width="22" height="15" fill="#fff4e2"/><rect x="3" y="9" width="26" height="4" fill="#f2b441"/><rect x="10" y="4" width="12" height="5" fill="#3fa7a0"/><rect x="11" y="17" width="10" height="5" fill="#a8754a"/></svg>',
 };
 
 /** Plain-DOM overlay: top bar, build tray, tool bar and toasts. */
@@ -150,7 +161,11 @@ export class Hud {
           ? 'Drag to draw'
           : item === 'land'
             ? '7×7 plots'
-            : `${BUILDINGS[item].w}×${BUILDINGS[item].h} · ${BUILDINGS[item].blurb}`;
+            : `${QUALITY_NAMES[BUILDINGS[item].quality]} · ${BUILDINGS[item].blurb}`;
+      if (item !== 'path' && item !== 'land') {
+        const d = BUILDINGS[item];
+        b.title = `${d.name}: ${d.w}×${d.h}, ${QUALITY_NAMES[d.quality].toLowerCase()} class, ${d.blurb.toLowerCase()}${d.coast ? ', must be on the shore' : ''}`;
+      }
       b.innerHTML = `<span class="icon">${ICONS[item]}</span><span class="name">${name}</span><span class="sub">${sub}</span><span class="price"><span class="coin-icon"></span><span data-price>${price}</span></span>`;
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();

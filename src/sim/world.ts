@@ -274,6 +274,8 @@ export class World {
       if (this.buildingAt(t.x, t.y)) return fail('Blocked by a building');
     }
     if (this.accessTiles(tiles).length === 0) return fail('Must touch a path');
+    if (BUILDINGS[kind].coast && !tiles.some((t) => NEIGHBOURS.some(([dx, dy]) => !this.isLand(t.x + dx, t.y + dy))))
+      return fail('Must be on the shore');
     if (this.money < BUILDINGS[kind].cost) return fail('Not enough coins');
     return OK;
   }

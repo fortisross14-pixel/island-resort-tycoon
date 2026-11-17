@@ -118,16 +118,20 @@ export class InfoPanel {
     const def = VENUES[b.kind];
     if (!def) return this.roomHtml(b);
     const v = this.sim.venue(b.id);
+    const free = def.basePrice === 0;
     const prices = PRICE_STEPS.map(
       (p, i) =>
         `<button data-price="${i}" class="${i === v.price ? 'on' : ''}"><span>${p.label}</span><b>${priceOf(b.kind, i as PriceStep)}</b></button>`,
     ).join('');
     const pct = (t: 'backpacker' | 'couple') => `${Math.round(buyChance(t, v.price) * 100)}%`;
+    const pricing = free
+      ? '<p class="estimate">Free to use: it pays off in happier guests and better reviews.</p>'
+      : `<div class="prices" role="group" aria-label="Price per person">${prices}</div>
+      <p class="estimate">Buy chance at this price: Backpackers <b>${pct('backpacker')}</b> · Couples <b>${pct('couple')}</b></p>`;
     return `
-      <div class="prices" role="group" aria-label="Price per person">${prices}</div>
-      <p class="estimate">Buy chance at this price: Backpackers <b>${pct('backpacker')}</b> · Couples <b>${pct('couple')}</b></p>
+      ${pricing}
       <dl>
-        <dt>Today</dt><dd>${v.visitsToday} sold · ${coin}${v.revenueToday}</dd>
+        <dt>Today</dt><dd>${free ? `${v.visitsToday} visits` : `${v.visitsToday} sold · ${coin}${v.revenueToday}`}</dd>
         <dt>Lost</dt><dd>${v.lostToday} walked away</dd>
         <dt>Now</dt><dd>${v.serving} of ${def.capacity} served · ${v.line.length} in line</dd>
         <dt>Fills</dt><dd>${NEED_LABELS[def.need]} +${def.gain}</dd>

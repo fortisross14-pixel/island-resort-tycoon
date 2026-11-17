@@ -122,7 +122,133 @@ function buffet(): THREE.Group {
   return g;
 }
 
-const BUILDERS: Record<BuildingKind, () => THREE.Group> = { basicRooms, snackBar, buffet };
+function standardRooms(): THREE.Group {
+  // 2×2: two-storey look, teal roof, balconies.
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.08, 1.8, PALETTE.sandDark));
+  g.add(box(1.6, 1.15, 1.35, PALETTE.wallWarm, 0, 0.08, -0.08));
+  g.add(hipRoof(1.95, 1.7, 0.5, PALETTE.roofTeal, 1.23));
+  const front = 0.601;
+  for (const sx of [-0.4, 0.4]) {
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.42), mat(PALETTE.woodDark));
+    door.position.set(sx - 0.12, 0.29, front);
+    g.add(door);
+    g.add(windowPane(sx + 0.17, 0.42, front));
+    g.add(windowPane(sx, 0.88, front, 0.34, 0.2));
+    // Balcony slab and rail.
+    g.add(box(0.5, 0.04, 0.18, PALETTE.white, sx, 0.68, front + 0.09));
+    g.add(box(0.5, 0.1, 0.02, PALETTE.white, sx, 0.72, front + 0.17));
+  }
+  g.add(box(0.05, 1.15, 0.05, PALETTE.white, 0, 0.08, front - 0.02));
+  for (const sx of [-0.55, 0.55]) g.add(palmPot(sx, 0.75));
+  return g;
+}
+
+function palmPot(x: number, z: number): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.14, 0.12, 0.14, PALETTE.roof, 0, 0.08, 0));
+  const bush = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), mat(PALETTE.palmLeaf));
+  bush.position.y = 0.3;
+  bush.castShadow = true;
+  g.add(bush);
+  g.position.set(x, 0, z);
+  return g;
+}
+
+function beachBar(): THREE.Group {
+  // 2×1 thatched hut with a bar counter and stools.
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.06, 0.85, PALETTE.wood));
+  g.add(box(1.3, 0.45, 0.25, PALETTE.woodDark, 0, 0.06, -0.15));
+  for (const sx of [-0.75, 0.75]) for (const sz of [-0.3, 0.3]) g.add(box(0.06, 0.85, 0.06, PALETTE.trunk, sx, 0.06, sz));
+  const thatch = new THREE.Mesh(new THREE.ConeGeometry(1.15, 0.5, 4, 1), mat('#d9b46a'));
+  thatch.rotation.y = Math.PI / 4;
+  thatch.scale.set(1.15, 1, 0.55);
+  thatch.position.y = 1.15;
+  thatch.castShadow = true;
+  g.add(thatch);
+  for (const sx of [-0.45, 0, 0.45]) {
+    g.add(box(0.12, 0.28, 0.12, PALETTE.roofSun, sx, 0.06, 0.25));
+  }
+  // Bottles.
+  for (let i = 0; i < 4; i++) g.add(box(0.05, 0.12, 0.05, i % 2 ? '#7bc96f' : '#4fb0e8', -0.4 + i * 0.25, 0.51, -0.15));
+  return g;
+}
+
+function giftShop(): THREE.Group {
+  // 1×2 shop with a pink awning and a sign.
+  const g = new THREE.Group();
+  g.add(box(0.85, 0.75, 1.6, '#ffe7f0', 0, 0, 0));
+  g.add(box(0.95, 0.08, 1.7, '#ff7aa8', 0, 0.75, 0));
+  for (let i = 0; i < 5; i++) {
+    const stripe = box(0.2, 0.04, 1.65, i % 2 ? PALETTE.white : '#ff7aa8', 0.38 + 0.02, 0.58, 0);
+    stripe.scale.x = 0.6;
+    stripe.position.x = 0.5;
+    stripe.position.z = -0.66 + i * 0.33;
+    stripe.scale.z = 0.19;
+    g.add(stripe);
+  }
+  const shop = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.35), mat(PALETTE.window));
+  shop.rotation.y = Math.PI / 2;
+  shop.position.set(0.426, 0.3, 0.15);
+  g.add(shop);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.42), mat(PALETTE.woodDark));
+  door.position.set(0, 0.21, 0.801);
+  g.add(door);
+  g.add(box(0.5, 0.18, 0.04, PALETTE.roofSun, 0, 0.88, 0.82));
+  return g;
+}
+
+function pool(): THREE.Group {
+  // 4×3 deck with a pool, loungers and parasols.
+  const g = new THREE.Group();
+  g.add(box(3.9, 0.08, 2.9, '#f3e6cc'));
+  const water = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 1.6), new THREE.MeshLambertMaterial({ color: '#4fc6e8' }));
+  water.position.set(-0.3, 0.07, -0.25);
+  g.add(water);
+  g.add(box(2.7, 0.1, 0.06, PALETTE.white, -0.3, 0.02, 0.58));
+  g.add(box(2.7, 0.1, 0.06, PALETTE.white, -0.3, 0.02, -1.08));
+  g.add(box(0.06, 0.1, 1.7, PALETTE.white, 1.03, 0.02, -0.25));
+  g.add(box(0.06, 0.1, 1.7, PALETTE.white, -1.63, 0.02, -0.25));
+  for (let i = 0; i < 4; i++) g.add(box(0.22, 0.07, 0.45, PALETTE.white, -1.3 + i * 0.6, 0.08, 1.05));
+  for (const [x, z, c] of [
+    [1.5, -0.6, '#ff7aa8'],
+    [1.5, 0.7, PALETTE.roofSun],
+  ] as const) {
+    g.add(box(0.04, 0.7, 0.04, PALETTE.trunk, x, 0.08, z));
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.16, 8), mat(c));
+    shade.position.set(x, 0.86, z);
+    shade.castShadow = true;
+    g.add(shade);
+  }
+  return g;
+}
+
+function frontDesk(): THREE.Group {
+  // 2×2 lobby with a big awning and a sign.
+  const g = new THREE.Group();
+  g.add(box(1.85, 0.08, 1.85, PALETTE.sandDark));
+  g.add(box(1.6, 0.9, 1.2, PALETTE.wall, 0, 0.08, -0.2));
+  g.add(box(1.8, 0.08, 1.7, PALETTE.roofSun, 0, 0.98, 0.05));
+  for (const sx of [-0.8, 0.8]) g.add(box(0.07, 0.9, 0.07, PALETTE.woodDark, sx, 0.08, 0.8));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.55), mat(PALETTE.window));
+  glass.position.set(0, 0.42, 0.401);
+  g.add(glass);
+  g.add(box(0.9, 0.22, 0.06, PALETTE.roofTeal, 0, 1.06, 0.78));
+  g.add(box(0.7, 0.3, 0.25, PALETTE.wood, 0, 0.08, 0.15));
+  return g;
+}
+
+const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  basicRooms,
+  standardRooms,
+  snackBar,
+  buffet,
+  beachBar,
+  giftShop,
+  pool,
+  frontDesk,
+};
 
 export function buildingModel(kind: BuildingKind): THREE.Group {
   return BUILDERS[kind]();

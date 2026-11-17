@@ -323,6 +323,7 @@ export class Game {
   }
 
   private autoAssign(): void {
+    if (!this.sim.hasFrontDesk) return this.hud.toast('Build a Front Desk to auto-assign guests');
     const n = this.sim.autoCheckInAll();
     const left = this.sim.queue.length;
     if (n === 0) this.hud.toast(left ? 'No free rooms. Build more Basic Rooms!' : 'No one is waiting');
@@ -583,7 +584,14 @@ export class Game {
         case '2':
         case '3':
         case '4':
-          return this.setTool({ type: 'build', kind: BUILDING_KINDS[Number(e.key) - 2], rot: 0 });
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9': {
+          const kind = BUILDING_KINDS[Number(e.key) - 2];
+          return kind ? this.setTool({ type: 'build', kind, rot: 0 }) : undefined;
+        }
       }
     });
   }
