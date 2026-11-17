@@ -24,8 +24,8 @@ experience in `src/sim/profile.ts`.
 
 | Island | Opens at | Mission | Level | Bronze | Silver | Gold |
 |---|---|---|---|---|---|---|
-| Coconut Key (tiny) | start | Open for Business | Beginner | 2 Basic Rooms, a Beach Bar (kit), host 15 guests | 12,000 revenue | 12,000 revenue within 7 months |
-| Coconut Key | start | Island Kitchen | Beginner | 2,500 from food | 6,000 from food | 6,000 from food within 10 months |
+| Coconut Key (tiny) | start | Open for Business | Beginner | 2 Basic Rooms, a Beach Bar (kit), host 15 guests | 9,000 revenue | 9,000 revenue within 7 months |
+| Coconut Key | start | Island Kitchen | Beginner | 1,500 from food | 3,500 from food | 3,500 from food within 10 months |
 | Twin Palms (lagoon) | 3 points | Lagoon Days | Intermediate | Trail Hut, Activities ★3.0 | Activities ★3.6, 150 guests | Activities ★4.2, ★3.8, Decoration ★3.4 |
 | Twin Palms | 3 points | Family Cove (needs Kids' Club) | Intermediate | 10 families, a Kids' Club | 40 families, ★3.6, a Pool | 100 families, ★4.2, 35,000 profit over 7 months |
 | Twin Palms | 3 points | Couples' Hideaway (needs Standard Rooms) | Intermediate | 25 couples, Lodging ★3.2 | 70 couples, Lodging ★3.7 | Lodging ★4.2, Decoration ★3.8, ★4.0 |

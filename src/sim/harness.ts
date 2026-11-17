@@ -2,7 +2,7 @@ import { BUILDINGS, footprint, type BuildingKind, type Rotation } from './buildi
 import { VENUES } from './needs';
 import { NODES } from './research';
 import { Sim, type NightReport } from './sim';
-import { World, type Tile } from './world';
+import { WELCOME_LEVELS, World, type Tile } from './world';
 import { islandLayout } from './islands';
 import type { Role, Worker } from './staff';
 import { applyPrebuilt, scenarioDef } from './scenario';
@@ -47,10 +47,18 @@ export interface RunOptions {
   mission?: string;
 }
 
-/** A mission's opening: a spine north from the dock, two Basic Rooms and a Snack Bar. */
+/** A mission's opening: a spine north from the dock, a walk along the shore, two Basic Rooms and a Snack Bar. */
 export function buildIslandStarter(w: World, bot: Bot): void {
   const d = w.dock;
   for (let y = d.y - 1; y >= d.y - 7; y--) if (!w.placePath(d.x, y).ok) break;
+  // A walk along the shore from the pier, so there is room to build beside it.
+  let end = d.x;
+  for (let i = 1; i <= 6; i++) {
+    if (!w.placePath(d.x + i, d.y - 1).ok) break;
+    end = d.x + i;
+  }
+  // ...and down to the water at its far end, where a beach usually is.
+  for (let y = d.y; end !== d.x && w.isLand(end, y + 1); y++) if (!w.placePath(end, y).ok) break;
   bot.place('basicRooms');
   bot.place('basicRooms');
   bot.place('snackBar');
@@ -97,6 +105,19 @@ export class Bot {
     const housed = sim.guests.filter((g) => g.roomId !== null && !g.leaving).length;
     const freeTomorrow = capacity - housed + r.checkingOut;
 
+    // 0. Whatever the mission's medals ask to be built comes first.
+    for (const tier of ['bronze', 'silver', 'gold'] as const)
+      for (const g of sim.campaign?.def.medals[tier] ?? [])
+        if (g.metric === 'building' && g.building) {
+          const have = this.w.buildings.filter((b) => b.kind === g.building).length;
+          if (have < g.target && this.affordable(g.building)) this.place(g.building);
+        }
+    // 0b. A bigger Welcome Center when more people want to come than it can greet (Pass 5).
+    const wc = this.w.buildings.find((b) => b.kind === 'welcomeCenter');
+    if (wc && sim.demand > sim.welcomeCapacity) {
+      const next = WELCOME_LEVELS[wc.level ?? 1];
+      if (next && this.w.money - next.cost >= this.reserve / 2) this.w.upgrade(wc.id);
+    }
     // 1. Rooms, if tomorrow's ferry won't fit.
     let guard = 0;
     while (freeTomorrow + guard * 2 < demand && guard < 4) {
@@ -107,13 +128,6 @@ export class Bot {
     const venues = this.w.buildings.filter((b) => VENUES[b.kind]);
     const wantVenues = Math.ceil(capacity / 5);
     if (venues.length < wantVenues) this.addVenue();
-    // 2b. Whatever the mission's medals ask to be built.
-    for (const tier of ['bronze', 'silver', 'gold'] as const)
-      for (const g of sim.campaign?.def.medals[tier] ?? [])
-        if (g.metric === 'building' && g.building) {
-          const have = this.w.buildings.filter((b) => b.kind === g.building).length;
-          if (have < g.target && this.affordable(g.building)) this.place(g.building);
-        }
     // 3. Front Desk and a Research Office once.
     for (const k of ['frontDesk', 'researchOffice'] as BuildingKind[])
       if (!this.w.buildings.some((b) => b.kind === k)) this.place(k);
@@ -275,6 +289,7 @@ export function runPlaytest(opts: RunOptions): { log: DayLog[]; analysis: Analys
   const scenario = mission ? mission.id : (opts.scenario ?? null);
   const w = mission ? World.onIsland(islandLayout(mission.island), mission.startMoney) : World.newGame();
   if (mission?.prebuilt) applyPrebuilt(w, mission.prebuilt);
+  if (mission) w.placeWelcomeCenter();
   const sim = new Sim(w);
   (sim as unknown as { rng: { state: number } }).rng.state = opts.seed ?? 1;
   sim.progression = true;

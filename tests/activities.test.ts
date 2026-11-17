@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { activityOf, canStepOn, landmarksOn, routeQuality, routeStarts, tripMinutes } from '../src/sim/activities';
-import { islandLayout } from '../src/sim/islands';
 import { SECONDS_PER_GAME_HOUR, Sim, TICK } from '../src/sim/sim';
 import { World, type Tile } from '../src/sim/world';
+import { coconutWorld } from './coconut';
 
 /** Shortest route (by the activity's rules) from a hub to a target tile, or null. */
 function routeTo(w: World, hubId: number, goal: Tile): Tile[] | null {
@@ -35,28 +35,22 @@ function routeTo(w: World, hubId: number, goal: Tile): Tile[] | null {
 
 /** Coconut Key with a small resort, a Trail Hut and an Excursion Pier. */
 function resort(): { w: World; hut: number; pier: number } {
-  const w = World.onIsland(islandLayout('coconutKey'), 100000);
-  const d = w.dock;
-  for (let y = d.y - 1; y >= 11; y--) w.placePath(d.x, y);
-  for (let x = d.x - 1; x >= 9; x--) w.placePath(x, 14);
-  for (let x = d.x + 1; x <= 17; x++) w.placePath(x, 14);
-  for (const p of w.plots) w.buyPlot(p.id);
+  const w = coconutWorld(100000, true);
   let rooms = 0;
-  for (let y = 9; y < 19 && rooms < 4; y++) for (let x = 5; x < 20 && rooms < 4; x++) if (w.placeBuilding('basicRooms', x, y, 0).ok) rooms++;
+  for (let y = 9; y < 15 && rooms < 4; y++) for (let x = 3; x < 20 && rooms < 4; x++) if (w.placeBuilding('basicRooms', x, y, 0).ok) rooms++;
   for (const k of ['snackBar', 'buffet'] as const) {
     let ok = false;
-    for (let y = 9; y < 19 && !ok; y++) for (let x = 5; x < 20 && !ok; x++) ok = w.placeBuilding(k, x, y, 0).ok;
+    for (let y = 9; y < 15 && !ok; y++) for (let x = 3; x < 20 && !ok; x++) ok = w.placeBuilding(k, x, y, 0).ok;
   }
   let hut = 0;
-  for (let y = 9; y < 14 && !hut; y++) for (let x = 8; x < 16 && !hut; x++) hut = w.placeBuilding('trailHut', x, y, 0).building?.id ?? 0;
-  let pier = 0;
-  for (let y = 10; y < 19 && !pier; y++) for (let x = 14; x < 22 && !pier; x++) for (const rot of [0, 1] as const) if (!pier) pier = w.placeBuilding('excursionPier', x, y, rot).building?.id ?? 0;
+  for (let y = 9; y < 14 && !hut; y++) for (let x = 7; x < 16 && !hut; x++) hut = w.placeBuilding('trailHut', x, y, 0).building?.id ?? 0;
+  const pier = w.placeBuilding('excursionPier', 13, 17, 0).building?.id ?? 0;
   expect(hut).toBeGreaterThan(0);
   expect(pier).toBeGreaterThan(0);
   return { w, hut, pier };
 }
 
-/** Hire a guide and put them on a hub's session (Pass 5: no guide, no session). */
+/** Hire the best guide on offer and put them on a hub's session (Pass 5: no guide, no session). */
 function guide(sim: Sim, hubId: number, slot: 'morning' | 'afternoon' | 'evening'): void {
   const offer = sim.offerStaff('operations');
   const best = offer.indexOf(offer.reduce((a, b) => (b.skill > a.skill ? b : a)));
@@ -79,7 +73,7 @@ describe('routes', () => {
     expect(w.setRoute(hut, trail).ok).toBe(true);
     expect(landmarksOn(w.routeOf(hut)!, w.landmarks).map((l) => l.kind)).toContain('viewpoint');
     // Not from the far side of the island, not into the sea, not jumping.
-    expect(w.checkRoute(hut, trail.slice(2))).toEqual({ ok: false, reason: 'Start the trail next to the hut' });
+    expect(w.checkRoute(hut, [{ x: 20, y: 3 }, { x: 21, y: 3 }, { x: 22, y: 3 }])).toEqual({ ok: false, reason: 'Start the trail next to the hut' });
     expect(w.checkRoute(hut, [trail[0], trail[2], trail[3]])).toEqual({ ok: false, reason: 'Each step must be next to the last' });
   });
 

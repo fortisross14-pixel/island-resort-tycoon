@@ -1,24 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { islandLayout } from '../src/sim/islands';
 import { SECONDS_PER_GAME_HOUR, Sim, TICK } from '../src/sim/sim';
-import { World } from '../src/sim/world';
+import { WELCOME_LEVELS, World } from '../src/sim/world';
+import { COVE_BEACH, coconutWorld } from './coconut';
 
 function runDays(sim: Sim, days: number): void {
   const ticks = Math.round((16.1 * SECONDS_PER_GAME_HOUR) / TICK);
   for (let d = 0; d < days; d++) for (let i = 0; i < ticks; i++) sim.step();
 }
 
-/** Coconut Key with rooms, food, and the cove beach tagged next to the spine. */
+/** Coconut Key with rooms, food, and the cove beach tagged beside the path down to it. */
 function resort(): { w: World; sim: Sim } {
-  const w = World.onIsland(islandLayout('coconutKey'), 100000);
-  const d = w.dock;
-  for (let y = d.y - 1; y >= 11; y--) w.placePath(d.x, y);
-  for (let x = d.x - 1; x >= 9; x--) w.placePath(x, 14);
+  const w = coconutWorld();
+  for (const t of COVE_BEACH) expect(w.setBeach(t.x, t.y, true).ok).toBe(true);
   let rooms = 0;
-  for (let y = 9; y < 14 && rooms < 3; y++) for (let x = 5; x < 20 && rooms < 3; x++) if (w.placeBuilding('basicRooms', x, y, 0).ok) rooms++;
-  w.placeBuilding('snackBar', d.x + 1, 12, 0);
-  // Tag the sand beside the spine (the cove) as beach.
-  for (let y = 15; y <= 17; y++) for (let x = d.x + 1; x <= d.x + 4; x++) w.setBeach(x, y, true);
+  for (let y = 9; y < 15 && rooms < 3; y++) for (let x = 3; x < 20 && rooms < 3; x++) if (w.placeBuilding('basicRooms', x, y, 0).ok) rooms++;
+  w.placeBuilding('snackBar', 13, 13, 0);
   const sim = new Sim(w);
   sim.autoCheckIn = true;
   return { w, sim };
@@ -40,22 +37,20 @@ describe('the beach area (Pass 5)', () => {
 
   it('beach buildings go on it, inland ones stay off it, and beach services need a path to the beach', () => {
     const { w } = resort();
-    const d = w.dock;
-    expect(w.canPlaceBuilding('basicRooms', d.x + 1, 15, 0)).toEqual({ ok: false, reason: 'Not on the beach area' });
-    expect(w.canPlaceBuilding('lifeguardTower', d.x - 1, 16, 0)).toEqual({ ok: false, reason: 'Goes on the beach area' });
-    expect(w.placeBuilding('lifeguardTower', d.x + 3, 16, 0).ok).toBe(true);
-    expect(w.placeBuilding('umbrella', d.x + 2, 17, 0).ok).toBe(true);
-    // An island beach far from any path can't be served yet.
+    expect(w.canPlaceBuilding('basicRooms', 8, 15, 0)).toEqual({ ok: false, reason: 'Not on the beach area' });
+    expect(w.canPlaceBuilding('lifeguardTower', 13, 14, 0)).toEqual({ ok: false, reason: 'Goes on the beach area' });
+    expect(w.placeBuilding('lifeguardTower', 10, 16, 0).ok).toBe(true);
+    expect(w.placeBuilding('umbrella', 10, 17, 0).ok).toBe(true);
+    // A beach no path reaches can't be served yet.
     const lone = World.onIsland(islandLayout('coconutKey'), 50000);
-    lone.setBeach(lone.dock.x + 3, lone.dock.y - 2, true);
-    expect(lone.canPlaceBuilding('lifeguardTower', lone.dock.x + 3, lone.dock.y - 2, 0)).toEqual({ ok: false, reason: 'Lay a path to the beach first' });
+    lone.setBeach(13, 16, true);
+    expect(lone.canPlaceBuilding('lifeguardTower', 13, 16, 0)).toEqual({ ok: false, reason: 'Lay a path to the beach first' });
   });
 
   it('guests spend time on the beach; towels and lockers earn a little', () => {
     const { w, sim } = resort();
-    const d = w.dock;
-    expect(w.placeBuilding('towelRental', d.x + 2, 15, 0).ok).toBe(true);
-    expect(w.placeBuilding('lockers', d.x + 3, 15, 0).ok).toBe(true);
+    expect(w.placeBuilding('towelRental', 9, 16, 0).ok).toBe(true);
+    expect(w.placeBuilding('lockers', 8, 16, 0).ok).toBe(true);
     let lounged = 0;
     let beachTake = 0;
     sim.on((e) => {
@@ -72,9 +67,8 @@ describe('the beach area (Pass 5)', () => {
 
   it('a lifeguard on duty and beach services make the beach better', () => {
     const { w, sim } = resort();
-    const d = w.dock;
     const bare = sim.beachQuality();
-    const tower = w.placeBuilding('lifeguardTower', d.x + 3, 16, 0).building!;
+    const tower = w.placeBuilding('lifeguardTower', 10, 16, 0).building!;
     expect(sim.beachQuality()).toBe(bare); // a tower without a lifeguard doesn't help
     sim.offerStaff('security');
     const g = sim.hire('security', 0);
@@ -83,7 +77,7 @@ describe('the beach area (Pass 5)', () => {
     expect(sim.beachGuarded).toBe(true);
     const guarded = sim.beachQuality();
     expect(guarded).toBeGreaterThan(bare + 20);
-    expect(w.placeBuilding('changingRooms', d.x + 1, 17, 0).ok).toBe(true);
+    expect(w.placeBuilding('changingRooms', 8, 15, 0).ok).toBe(true);
     expect(sim.beachQuality()).toBeGreaterThan(guarded);
   });
 });
@@ -100,6 +94,19 @@ describe('the Welcome Center (Pass 5)', () => {
     expect(w.demolishAt(wc.x, wc.y)).toEqual({ ok: false, reason: 'This one stays where it is' });
     expect(w.canMoveBuilding(wc.id, wc.x, wc.y - 2, 0)).toEqual({ ok: false, reason: 'This one stays where it is' });
     expect(w.placeWelcomeCenter()).toBeNull();
+  });
+
+  it('sets how many parties arrive a month; upgrades raise it', () => {
+    const w = World.onIsland(islandLayout('coconutKey'), 2000);
+    const wc = w.placeWelcomeCenter()!;
+    const sim = new Sim(w);
+    expect(sim.welcomeCapacity).toBe(WELCOME_LEVELS[0].parties);
+    expect(WELCOME_LEVELS[0].parties).toBe(1);
+    expect(w.upgrade(wc.id).ok).toBe(true);
+    expect(w.money).toBe(2000 - WELCOME_LEVELS[1].cost);
+    expect(sim.welcomeCapacity).toBe(3);
+    // The next level costs more than is left.
+    expect(w.canUpgrade(wc.id).ok).toBe(false);
   });
 
   it('drinks and flowers cost a little per guest and are remembered; a greeter keeps the queue patient', () => {

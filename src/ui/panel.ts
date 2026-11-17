@@ -2,7 +2,7 @@ import { SLOTS, SLOT_NAMES, activityOf, activityPrice, landmarksOn, tripMinutes,
 import { BUILDINGS, ELEVATOR_ABOVE, ELEVATOR_COST, RATING_NAMES, THEME_NAMES, floorCost, ratingOf } from '../sim/buildings';
 import { NEEDS, NEED_LABELS, PRICE_STEPS, VENUES, buyChance, priceOf, roomRateOf, type PriceStep } from '../sim/needs';
 import { GUEST_TYPES, type Guest, type Sim } from '../sim/sim';
-import { conditionOf, floorsOf, type Building } from '../sim/world';
+import { WELCOME_LEVELS, conditionOf, floorsOf, type Building } from '../sim/world';
 import { monthYear } from '../sim/calendar';
 
 type Subject = { kind: 'guest'; id: number } | { kind: 'building'; id: number } | null;
@@ -42,6 +42,7 @@ export class InfoPanel {
       drawRoute(id: number): void;
       move(id: number): void;
       welcome(opt: 'drinks' | 'leis'): void;
+      upgrade(id: number): void;
       togglePlan(id: number, slot: Slot): void;
     },
   ) {
@@ -66,6 +67,7 @@ export class InfoPanel {
       if (t.closest('[data-move]')) return this.actions.move(this.subject.id);
       const wopt = t.closest<HTMLElement>('[data-welcome]');
       if (wopt) this.actions.welcome(wopt.dataset.welcome as 'drinks' | 'leis');
+      if (t.closest('[data-upgrade]')) this.actions.upgrade(this.subject.id);
       const slot = t.closest<HTMLElement>('[data-hubslot]');
       if (slot) this.actions.togglePlan(this.subject.id, slot.dataset.hubslot as Slot);
       const ap = t.closest<HTMLButtonElement>('[data-aprice]');
@@ -224,7 +226,16 @@ export class InfoPanel {
       const greeter = this.sim.greeter;
       const opt = (k: 'drinks' | 'leis', label: string, cost: number) =>
         `<label class="check"><input type="checkbox" data-welcome="${k}" ${w[k] ? 'checked' : ''} /> ${label} <small>${coin}${cost} a guest</small></label>`;
-      return `<p class="estimate">Every party is welcomed here when they get their room.</p>
+      const lvl = b.level ?? 1;
+      const cur = WELCOME_LEVELS[lvl - 1];
+      const next = WELCOME_LEVELS[lvl];
+      const demand = this.sim.demand;
+      const short = demand > cur.parties;
+      return `<dl><dt>Level</dt><dd>${cur.name} (${lvl} of ${WELCOME_LEVELS.length})</dd>
+          <dt>Welcomes</dt><dd>${cur.parties} part${cur.parties === 1 ? 'y' : 'ies'} a month</dd>
+          <dt>Want to come</dt><dd class="${short ? 'warn' : ''}">${demand} this month${short ? ': the rest stay home' : ''}</dd></dl>
+        ${next ? `<div class="floor-actions"><button data-upgrade class="${short ? 'urgent' : ''}">Upgrade to ${next.name} · ${next.parties} a month <span>${coin}${next.cost.toLocaleString('en-US')}</span></button></div>` : '<p class="estimate">Fully upgraded.</p>'}
+        <p class="estimate">Every party is welcomed here when they get their room.</p>
         ${opt('drinks', 'Free welcome drinks', 3)}${opt('leis', 'Flower necklaces', 2)}
         <dl><dt>Greeting team</dt><dd>${greeter ? `${greeter.name} (mornings)` : '<span class="warn">Nobody: put an Operations person on the morning greeting shift (Business, People)</span>'}</dd></dl>`;
     }

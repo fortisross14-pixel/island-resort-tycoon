@@ -233,6 +233,15 @@ export class Game {
         this.hud.toast(`Moving costs ${this.world.moveCost(id).toLocaleString('en-US')} coins`, 'info');
       },
       togglePlan: (id, slot) => this.togglePlan(id, slot),
+      upgrade: (id) => {
+        const r = this.history.run(() => this.world.upgrade(id));
+        if (!r.ok) {
+          this.sfx.play('error');
+          return this.hud.toast(r.reason);
+        }
+        this.sfx.play('fanfare');
+        this.hud.toast(`Welcome Center upgraded: ${this.sim.welcomeCapacity} parties a month`, 'good');
+      },
       welcome: (opt) => {
         this.sim.welcome = { ...this.sim.welcome, [opt]: !this.sim.welcome[opt] };
         this.save();

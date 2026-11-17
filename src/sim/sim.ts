@@ -43,7 +43,7 @@ import {
   type MaintenanceLevel,
 } from './ratings';
 import { RATING_CATEGORIES, ratingOf, type RatingCategory } from './buildings';
-import { conditionOf } from './world';
+import { WELCOME_LEVELS, conditionOf } from './world';
 import { COVERS, GREET, caretaker, candidates, hubTask, postTask, type Candidate, type Role, type Worker } from './staff';
 import {
   GATHER_LEAD,
@@ -935,7 +935,7 @@ export class Sim {
       ratingsBefore: this.ratingsAt(this.day),
       best: this.bestMoment(income),
       worst: this.worstMoment(),
-      nextArrivals: arrivalsForDay(this.day + 1, this.rating),
+      nextArrivals: Math.min(arrivalsForDay(this.day + 1, this.rating), this.welcomeCapacity),
       researchPoints: t.research,
       offer: null,
     };
@@ -1097,6 +1097,17 @@ export class Sim {
 
   get welcomeCenter(): Building | undefined {
     return this.world.buildings.find((b) => b.kind === 'welcomeCenter');
+  }
+
+  /** Parties the Welcome Center can take each month (no limit without one: prototype maps, tests). */
+  get welcomeCapacity(): number {
+    const wc = this.welcomeCenter;
+    return wc ? WELCOME_LEVELS[(wc.level ?? 1) - 1].parties : Infinity;
+  }
+
+  /** Parties that would come if the Welcome Center could take them all. */
+  get demand(): number {
+    return arrivalsForDay(this.day, this.rating);
   }
 
   /** Greeting needs the Welcome Center and someone on the morning greeting shift. */
@@ -1395,7 +1406,8 @@ export class Sim {
           f.cameToday = true;
           f.t = 0;
           const room = MAX_GUESTS - this.onIsland;
-          f.toUnload = Math.max(0, Math.min(arrivalsForDay(this.day, this.rating), room));
+          // The Welcome Center can only greet so many parties a month (Pass 5).
+          f.toUnload = Math.max(0, Math.min(arrivalsForDay(this.day, this.rating), room, this.welcomeCapacity));
           this.emit({ type: 'ferryArriving' });
         }
         return;

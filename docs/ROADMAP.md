@@ -298,6 +298,12 @@ The Caribbean's nine missions, their goals and how they unlock are in [MISSIONS.
 - **Welcome Center.** Placed next to the pier in every resort, fixed. Free welcome drinks (3 a
   guest) and flower necklaces (2 a guest) are checkboxes in its panel; with someone on the
   morning greeting shift, arrivals wait more patiently and remember the welcome.
+  It also sets how many parties can arrive each month: Hut 1, Kiosk 3 (800), Lodge 6 (2,500),
+  Pavilion 10 (8,000), Grand Terminal 16 (16,000). Upgrades are bought from its panel, which
+  shows how many wanted to come; the rest stay home.
+- **Coconut Key re-cut.** The pier moved to the west shore, so the long south beach is free to
+  build on; the beginner targets were lowered for the one-party start (Open for Business silver
+  9,000 revenue; Island Kitchen 1,500 / 3,500 from food, 11,000 to start).
 - **Beach area.** Mark owned sand as beach (free) with the Beach area tool. Beach buildings go
   only on it: Lifeguard Tower, Changing Rooms, Lockers, Towel Rental, Beach Food Post, Beach
   Club (research), umbrellas and other beach decor; inland buildings stay off it. A path must

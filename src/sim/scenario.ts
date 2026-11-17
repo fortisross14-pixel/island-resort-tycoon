@@ -102,8 +102,8 @@ export const SCENARIOS: ScenarioDef[] = [
         { metric: 'building', target: 1, building: 'beachBar', label: 'Build a Beach Bar' },
         { metric: 'served', target: 15, label: 'Host 15 guests' },
       ],
-      silver: [{ metric: 'revenue', target: 12000, label: 'Earn 12,000 in revenue' }],
-      gold: [{ metric: 'revenue', target: 12000, label: 'Earn 12,000 in revenue within 7 months' }],
+      silver: [{ metric: 'revenue', target: 9000, label: 'Earn 9,000 in revenue' }],
+      gold: [{ metric: 'revenue', target: 9000, label: 'Earn 9,000 in revenue within 7 months' }],
     },
   },
   {
@@ -112,13 +112,13 @@ export const SCENARIOS: ScenarioDef[] = [
     island: 'coconutKey',
     level: 'beginner',
     blurb: 'Coconut Key is small: there is room for one good kitchen. Get guests in, then feed them well.',
-    startMoney: 8000,
+    startMoney: 11000,
     days: 24,
     deadlines: { gold: 10 },
     medals: {
-      bronze: [{ metric: 'foodRevenue', target: 2500, label: 'Earn 2,500 from food' }],
-      silver: [{ metric: 'foodRevenue', target: 6000, label: 'Earn 6,000 from food' }],
-      gold: [{ metric: 'foodRevenue', target: 6000, label: 'Earn 6,000 from food within 10 months' }],
+      bronze: [{ metric: 'foodRevenue', target: 1500, label: 'Earn 1,500 from food' }],
+      silver: [{ metric: 'foodRevenue', target: 3500, label: 'Earn 3,500 from food' }],
+      gold: [{ metric: 'foodRevenue', target: 3500, label: 'Earn 3,500 from food within 10 months' }],
     },
   },
   // ---------- Twin Palms (3 points) ----------

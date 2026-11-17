@@ -118,7 +118,21 @@ export interface Building {
   elevator?: boolean;
   /** Wear (Pass 4): 100 = like new. Absent means 100. */
   condition?: number;
+  /** Upgrade level (the Welcome Center, Pass 5); 1 when absent. */
+  level?: number;
 }
+
+/**
+ * Welcome Center levels: how many parties can be welcomed each month (the ferry brings no
+ * more than that), and what the upgrade to that level costs.
+ */
+export const WELCOME_LEVELS: Array<{ parties: number; cost: number; name: string }> = [
+  { parties: 1, cost: 0, name: 'Hut' },
+  { parties: 3, cost: 800, name: 'Kiosk' },
+  { parties: 6, cost: 2500, name: 'Lodge' },
+  { parties: 10, cost: 8000, name: 'Pavilion' },
+  { parties: 16, cost: 16000, name: 'Grand Terminal' },
+];
 
 export function conditionOf(b: Building): number {
   return b.condition ?? 100;
@@ -495,6 +509,27 @@ export class World {
             if (!best || dist < best.dist) best = { x, y, rot, dist };
           }
     return best ? (this.placeBuilding('welcomeCenter', best.x, best.y, best.rot).building ?? null) : null;
+  }
+
+  /** Upgrade the Welcome Center to its next level. */
+  canUpgrade(id: number): Result {
+    const b = this.buildingsById.get(id);
+    if (!b || b.kind !== 'welcomeCenter') return fail('Nothing to upgrade');
+    const next = WELCOME_LEVELS[b.level ?? 1];
+    if (!next) return fail('Fully upgraded');
+    if (this.money < next.cost) return fail('Not enough coins');
+    return OK;
+  }
+
+  upgrade(id: number): Result {
+    const check = this.canUpgrade(id);
+    if (!check.ok) return check;
+    const b = this.buildingsById.get(id)!;
+    this.money -= WELCOME_LEVELS[b.level ?? 1].cost;
+    b.level = (b.level ?? 1) + 1;
+    b.condition = 100;
+    this.emit();
+    return OK;
   }
 
   // ---------- moving and bulldozing (Pass 5) ----------
