@@ -98,6 +98,7 @@ export class NightReportView {
             <h3>Guests</h3>
             <p>${s.arrived} arrived · ${s.housed} checked in · ${s.turnedAway} gave up · ${r.checkingOut} checking out</p>
             <p>Tomorrow’s ferry: about <b>${r.nextArrivals}</b> parties</p>
+            <p>Research: <b>+${r.researchPoints}</b> points</p>
             ${r.best ? `<p class="moment good">▲ ${r.best}</p>` : ''}
             ${r.worst ? `<p class="moment bad">▼ ${r.worst}</p>` : ''}
           </div>

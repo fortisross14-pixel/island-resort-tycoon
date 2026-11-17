@@ -46,6 +46,16 @@ export interface VenueDef {
   bonus?: Partial<Meters>;
 }
 
+const RESTAURANT: VenueDef = {
+  need: 'hunger',
+  gain: 80,
+  capacity: 10,
+  service: 8,
+  lineMax: 6,
+  basePrice: 45,
+  bonus: { comfort: 10 },
+};
+
 export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   snackBar: { need: 'hunger', gain: 35, capacity: 2, service: 2.5, lineMax: 4, basePrice: 10, bonus: { fun: 5 } },
   buffet: { need: 'hunger', gain: 70, capacity: 8, service: 6, lineMax: 6, basePrice: 25, bonus: { comfort: 5 } },
@@ -53,6 +63,14 @@ export const VENUES: Partial<Record<BuildingKind, VenueDef>> = {
   giftShop: { need: 'fun', gain: 25, capacity: 3, service: 3, lineMax: 3, basePrice: 18 },
   // Free to use: it earns through happier guests and better reviews (GDD "Free (appeal)").
   pool: { need: 'fun', gain: 35, capacity: 10, service: 7, lineMax: 6, basePrice: 0, bonus: { comfort: 25 } },
+  // Tier 2 (Pass 1)
+  italianRestaurant: RESTAURANT,
+  seafoodRestaurant: RESTAURANT,
+  asianRestaurant: RESTAURANT,
+  gym: { need: 'comfort', gain: 25, capacity: 6, service: 6, lineMax: 4, basePrice: 10, bonus: { fun: 15 } },
+  spa: { need: 'comfort', gain: 55, capacity: 4, service: 10, lineMax: 4, basePrice: 60, bonus: { rest: 25 } },
+  boutique: { need: 'fun', gain: 30, capacity: 4, service: 5, lineMax: 3, basePrice: 50, bonus: { comfort: 10 } },
+  diveShop: { need: 'fun', gain: 60, capacity: 4, service: 12, lineMax: 4, basePrice: 55 },
 };
 
 /** Sim seconds a guest will stand in a line before walking off. */
@@ -95,7 +113,7 @@ export function lowestNeed(m: Meters): Need {
 // ---------- room rates and costs (M5) ----------
 
 /** Nightly room rate per party at the "Fair" step, by room tier. */
-export const ROOM_BASE_RATE: Record<number, number> = { 1: 50, 2: 90, 3: 160 };
+export const ROOM_BASE_RATE: Record<number, number> = { 1: 50, 2: 90, 3: 160, 4: 260 };
 
 export function roomRateOf(tier: number, step: PriceStep): number {
   return Math.round((ROOM_BASE_RATE[tier] ?? 50) * PRICE_STEPS[step].mult);

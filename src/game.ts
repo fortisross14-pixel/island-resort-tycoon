@@ -106,9 +106,11 @@ export class Game {
       onTab: (tab) => this.setTab(tab),
       onGuestDown: (id, e) => this.onGuestDown(id, e),
       onAutoAssign: () => this.autoAssign(),
+      onResearch: (id) => this.research(id),
     });
     this.panel = new InfoPanel(hudRoot, this.sim);
     this.sim.pauseAtNight = true;
+    this.sim.progression = true;
     this.report = new NightReportView(hudRoot, {
       onStartDay: () => this.startDay(),
       onReview: (rv) => {
@@ -128,6 +130,7 @@ export class Game {
     this.onWorldChange();
     this.setTool({ type: 'none' });
     this.bindInput(canvas);
+    this.updateLocks();
     if (discarded) this.hud.toast('The island is bigger now: an old prototype save was replaced', 'info');
   }
 
@@ -160,6 +163,8 @@ export class Game {
     this.panel.update(performance.now());
     this.hud.setClock(this.world.day, this.sim.clockText, this.sim.onIsland);
     this.hud.setRating(this.sim.rating);
+    this.hud.setResearch(this.sim.research.points, this.sim.researchNodes);
+    this.updateLocks();
     const queue = this.sim.queue;
     this.hud.setQueue(queue);
     this.followQueue(queue.length);
@@ -201,6 +206,20 @@ export class Game {
         this.hud.toast(`Day ${e.day}: the ferry arrives at 08:00`, 'info');
         this.save();
         return;
+    }
+  }
+
+  private research(id: string): void {
+    const r = this.sim.researchTopic(id);
+    if (!r.ok) return this.hud.toast(r.reason);
+    this.updateLocks();
+    this.hud.toast('Research done: new buildings in the Build tab', 'good');
+  }
+
+  private updateLocks(): void {
+    for (const k of BUILDING_KINDS) {
+      const g = this.sim.buildGate(k);
+      this.hud.setLocked(k, g.ok ? null : g.reason);
     }
   }
 
@@ -369,6 +388,7 @@ export class Game {
     this.world.restore(World.newGame().snapshot());
     this.view.frameStart();
     this.sim.reset();
+    this.updateLocks();
     this.report.hide();
     this.history.clear();
     this.setTool({ type: 'none' });
@@ -502,6 +522,11 @@ export class Game {
   // ---------- input ----------
 
   private onTrayDown(item: TrayItem, e: PointerEvent): void {
+    const locked = this.hud.lockReason(item);
+    if (locked) {
+      this.hud.toast(`${locked} (Research tab)`);
+      return;
+    }
     if (item === 'path') this.setTool({ type: 'path' });
     else if (item === 'land') this.setTool(this.tool.type === 'land' ? { type: 'none' } : { type: 'land' });
     else {

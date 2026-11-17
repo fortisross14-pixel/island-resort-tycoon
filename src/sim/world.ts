@@ -124,6 +124,8 @@ export class World {
   /** Land flag per tile (inside an owned plot). */
   private land: Uint8Array;
   private buildingsById = new Map<number, Building>();
+  /** Extra rule from outside the map, e.g. research unlocks (set by the Sim). */
+  gate: ((kind: BuildingKind) => Result) | null = null;
   private listeners = new Set<() => void>();
   private moneyListeners = new Set<() => void>();
 
@@ -266,6 +268,8 @@ export class World {
   // ---------- buildings ----------
 
   canPlaceBuilding(kind: BuildingKind, x: number, y: number, rot: Rotation): Result {
+    const gate = this.gate?.(kind);
+    if (gate && !gate.ok) return gate;
     const tiles = this.footprintTiles(kind, x, y, rot);
     for (const t of tiles) {
       if (!this.inBounds(t.x, t.y)) return fail('Outside the island');

@@ -131,7 +131,7 @@ More to build and more reasons to build it. The full building plan is in
 
 1. ✅ **Land.** The map is 28×28 in 7×7 plots; you start with the middle 14×14. Buy plots that border your land (from 3,000, ×1.35 each); they rise out of the sea. The harbour plot in front of the dock is never for sale.
 2. ✅ **Catalogue and tier 1.** Quality classes; Standard Rooms, Beach Bar (shore only), Gift Shop, Pool (free) and Front Desk (enables auto-assign, longer patience). New wishes: pool and bar. Guests who balk at a price skip that venue for the rest of the day.
-3. ⏳ **Research and unlocks.** Research points from reviews; buildings locked by tier (and star rating for premium); tier 2: themed restaurants, Garden Bungalows, Gym, Spa, Boutique, Dive Shop.
+3. ✅ **Research and unlocks.** Research points from review stars and Research Offices; a Research tab with topics in four branches; tier-1 buildings locked until researched; tier 2 needs two tier-1 topics and premium topics a ★3 rating. Tier 2 added: Garden Bungalows, Italian/Seafood/Asian restaurants, Gym, Spa, Boutique, Dive Shop.
 4. ⏳ **More guest types, stacked floors, scenarios and goals, investor rescue.**
 
 ## Pass 2 — Balance

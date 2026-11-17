@@ -239,7 +239,142 @@ function frontDesk(): THREE.Group {
   return g;
 }
 
+function researchOffice(): THREE.Group {
+  // 2×2 office with a satellite dish.
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.08, 1.8, PALETTE.sandDark));
+  g.add(box(1.5, 0.8, 1.3, '#eef3f7', 0, 0.08, -0.1));
+  g.add(box(1.6, 0.08, 1.4, '#6b7fd6', 0, 0.88, -0.1));
+  for (const sx of [-0.4, 0.4]) g.add(windowPane(sx, 0.5, 0.551, 0.4, 0.3));
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.42), mat(PALETTE.woodDark));
+  door.position.set(0, 0.29, 0.551);
+  g.add(door);
+  g.add(box(0.05, 0.3, 0.05, '#cccccc', 0.4, 0.96, -0.3));
+  const dish = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2.5), mat(PALETTE.white));
+  dish.rotation.x = -0.9;
+  dish.position.set(0.4, 1.3, -0.3);
+  dish.castShadow = true;
+  g.add(dish);
+  return g;
+}
+
+function gardenBungalows(): THREE.Group {
+  // 3×2 garden with two wooden bungalows and hedges.
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.06, 1.85, '#8cc860'));
+  for (const sx of [-0.75, 0.75]) {
+    g.add(box(1.0, 0.65, 0.9, PALETTE.wood, sx, 0.06, -0.2));
+    const roof = hipRoof(1.25, 1.15, 0.55, '#7a5a3a', 0.71);
+    roof.position.x = sx;
+    roof.position.z = -0.2;
+    g.add(roof);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.4), mat(PALETTE.woodDark));
+    door.position.set(sx, 0.26, 0.251);
+    g.add(door);
+    g.add(box(0.7, 0.05, 0.3, '#c99a6a', sx, 0.06, 0.45));
+  }
+  for (let i = 0; i < 6; i++) g.add(box(0.36, 0.22, 0.2, PALETTE.palmLeaf, -1.2 + i * 0.48, 0.06, 0.8));
+  for (const [x, z] of [
+    [-1.3, -0.75],
+    [1.3, -0.75],
+  ])
+    g.add(palmPot(x, z));
+  return g;
+}
+
+function restaurantModel(roofColor: string, sign: string): () => THREE.Group {
+  return () => {
+    // 3×3 restaurant with a terrace of tables.
+    const g = new THREE.Group();
+    g.add(box(2.85, 0.08, 2.85, '#efe2c8'));
+    g.add(box(2.4, 1.0, 1.5, PALETTE.wall, 0, 0.08, -0.55));
+    g.add(hipRoof(2.8, 1.9, 0.6, roofColor, 1.08));
+    for (const sx of [-0.8, 0, 0.8]) g.add(windowPane(sx, 0.55, 0.201, 0.45, 0.35));
+    g.add(box(1.0, 0.26, 0.06, sign, 0, 1.0, 0.23));
+    for (const [x, z] of [
+      [-0.85, 0.75],
+      [0, 0.95],
+      [0.85, 0.75],
+    ]) {
+      g.add(box(0.36, 0.22, 0.36, PALETTE.white, x, 0.08, z));
+      g.add(box(0.03, 0.55, 0.03, PALETTE.trunk, x, 0.08, z));
+      const shade = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.12, 6), mat(sign));
+      shade.position.set(x, 0.68, z);
+      shade.castShadow = true;
+      g.add(shade);
+    }
+    return g;
+  };
+}
+
+function gym(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.08, 1.8, PALETTE.sandDark));
+  g.add(box(1.6, 0.85, 1.4, '#e9eef0', 0, 0.08, -0.1));
+  g.add(box(1.7, 0.1, 1.5, '#4a5560', 0, 0.93, -0.1));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.5), mat(PALETTE.window));
+  glass.position.set(0, 0.45, 0.601);
+  g.add(glass);
+  // Dumbbell sign.
+  g.add(box(0.5, 0.06, 0.06, '#ff6b6b', 0, 1.12, 0.62));
+  for (const sx of [-0.27, 0.27]) g.add(box(0.1, 0.2, 0.1, '#ff6b6b', sx, 1.05, 0.62));
+  return g;
+}
+
+function spa(): THREE.Group {
+  // 3×3 spa with a bamboo screen and a plunge pool.
+  const g = new THREE.Group();
+  g.add(box(2.85, 0.08, 2.85, '#efe6d6'));
+  g.add(box(1.9, 0.8, 1.4, PALETTE.white, -0.3, 0.08, -0.6));
+  g.add(hipRoof(2.3, 1.8, 0.45, '#5fb3a5', 0.88));
+  g.children[g.children.length - 1].position.set(-0.3, 0.88 + 0.225, -0.6);
+  const water = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.8), new THREE.MeshLambertMaterial({ color: '#7fd8e8' }));
+  water.position.set(0.7, 0.1, 0.7);
+  g.add(water);
+  for (let i = 0; i < 7; i++) g.add(box(0.06, 0.6, 0.06, '#b8a35a', -1.3 + i * 0.12, 0.08, 1.2));
+  for (const x of [-0.6, -0.2]) g.add(box(0.22, 0.07, 0.45, PALETTE.white, x, 0.08, 0.7));
+  return g;
+}
+
+function boutique(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.08, 1.8, PALETTE.sandDark));
+  g.add(box(1.5, 0.9, 1.3, '#f6effa', 0, 0.08, -0.15));
+  g.add(box(1.7, 0.1, 0.5, '#9b6bd6', 0, 0.75, 0.62));
+  g.add(box(1.6, 0.08, 1.4, '#7f55b8', 0, 0.98, -0.15));
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.5), mat(PALETTE.window));
+  glass.position.set(0, 0.42, 0.501);
+  g.add(glass);
+  g.add(box(0.12, 0.5, 0.12, '#ffd166', -0.5, 0.08, 0.75));
+  return g;
+}
+
+function diveShop(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(1.8, 0.06, 1.8, PALETTE.wood));
+  g.add(box(1.1, 0.7, 1.0, '#3b8fd6', -0.25, 0.06, -0.3));
+  g.add(box(1.25, 0.08, 1.15, PALETTE.white, -0.25, 0.76, -0.3));
+  g.add(box(0.04, 0.9, 0.04, PALETTE.trunk, 0.6, 0.06, -0.5));
+  g.add(box(0.3, 0.2, 0.02, '#ff4d4d', 0.76, 0.76, -0.5));
+  g.add(box(0.26, 0.04, 0.04, PALETTE.white, 0.76, 0.84, -0.48));
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 1.0), mat('#ffd166'));
+  hull.position.set(0.45, 0.15, 0.4);
+  hull.castShadow = true;
+  g.add(hull);
+  for (let i = 0; i < 3; i++) g.add(box(0.1, 0.3, 0.1, '#222f3a', -0.6 + i * 0.2, 0.06, 0.4));
+  return g;
+}
+
 const BUILDERS: Record<BuildingKind, () => THREE.Group> = {
+  researchOffice,
+  gardenBungalows,
+  italianRestaurant: restaurantModel('#c0392b', '#2e9e4f'),
+  seafoodRestaurant: restaurantModel('#2e86c1', '#f5f5f5'),
+  asianRestaurant: restaurantModel('#8e2e2e', '#f2b441'),
+  gym,
+  spa,
+  boutique,
+  diveShop,
   basicRooms,
   standardRooms,
   snackBar,

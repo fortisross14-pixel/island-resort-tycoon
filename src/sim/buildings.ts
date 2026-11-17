@@ -12,7 +12,16 @@ export type BuildingKind =
   | 'beachBar'
   | 'giftShop'
   | 'pool'
-  | 'frontDesk';
+  | 'frontDesk'
+  | 'researchOffice'
+  | 'gardenBungalows'
+  | 'italianRestaurant'
+  | 'seafoodRestaurant'
+  | 'asianRestaurant'
+  | 'gym'
+  | 'spa'
+  | 'boutique'
+  | 'diveShop';
 
 export type BuildingFamily = 'rooms' | 'food' | 'fun' | 'services';
 
@@ -145,7 +154,101 @@ export const BUILDINGS: Record<BuildingKind, BuildingDef> = {
     quality: 2,
     unlock: 1,
   },
+  researchOffice: {
+    kind: 'researchOffice',
+    name: 'Research Office',
+    family: 'services',
+    w: 2,
+    h: 2,
+    cost: 2500,
+    upkeep: 30,
+    blurb: '+4 research a night',
+    quality: 1,
+    unlock: 0,
+  },
+  // ---------- tier 2 ----------
+  gardenBungalows: {
+    kind: 'gardenBungalows',
+    name: 'Garden Bungalows',
+    family: 'rooms',
+    w: 3,
+    h: 2,
+    cost: 6500,
+    upkeep: 85,
+    blurb: '2 premium rooms',
+    quality: 3,
+    unlock: 2,
+  },
+  italianRestaurant: restaurant('italianRestaurant', 'Italian Restaurant'),
+  seafoodRestaurant: restaurant('seafoodRestaurant', 'Seafood Restaurant'),
+  asianRestaurant: restaurant('asianRestaurant', 'Asian Restaurant'),
+  gym: {
+    kind: 'gym',
+    name: 'Gym',
+    family: 'fun',
+    w: 2,
+    h: 2,
+    cost: 4000,
+    upkeep: 50,
+    blurb: 'Comfort · fun',
+    quality: 2,
+    unlock: 2,
+  },
+  spa: {
+    kind: 'spa',
+    name: 'Spa',
+    family: 'fun',
+    w: 3,
+    h: 3,
+    cost: 8000,
+    upkeep: 100,
+    blurb: 'Comfort · rest',
+    quality: 3,
+    unlock: 2,
+  },
+  boutique: {
+    kind: 'boutique',
+    name: 'Boutique',
+    family: 'fun',
+    w: 2,
+    h: 2,
+    cost: 5000,
+    upkeep: 60,
+    blurb: 'Premium shopping',
+    quality: 3,
+    unlock: 2,
+  },
+  diveShop: {
+    kind: 'diveShop',
+    name: 'Dive Shop',
+    family: 'fun',
+    w: 2,
+    h: 2,
+    cost: 6000,
+    upkeep: 70,
+    blurb: 'Dive trips · shore',
+    quality: 3,
+    unlock: 2,
+    coast: true,
+  },
 };
+
+/** GDD: "Restaurant (themed: Italian, Seafood, Asian)", moved to tier 2 in Pass 1. */
+function restaurant(kind: BuildingKind, name: string): BuildingDef {
+  return {
+    kind,
+    name,
+    family: 'food',
+    w: 3,
+    h: 3,
+    cost: 7000,
+    upkeep: 90,
+    blurb: 'Premium meals',
+    quality: 3,
+    unlock: 2,
+    noisy: true,
+  };
+}
 
 export const BUILDING_KINDS = Object.keys(BUILDINGS) as BuildingKind[];
 

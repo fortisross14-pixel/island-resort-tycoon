@@ -1,5 +1,6 @@
 import { BUILDINGS, BUILDING_KINDS, PATH_COST, QUALITY_NAMES, type BuildingKind } from '../sim/buildings';
 import { WISHES, type Wish } from '../sim/match';
+import { BRANCHES, type NodeStatus, type ResearchNode } from '../sim/research';
 import { GUEST_TYPES, PATIENCE_SECONDS, type Guest } from '../sim/sim';
 
 export type TrayItem = BuildingKind | 'path' | 'land';
@@ -15,9 +16,10 @@ export interface HudHandlers {
   onTab(tab: Tab): void;
   onGuestDown(id: number, e: PointerEvent): void;
   onAutoAssign(): void;
+  onResearch(id: string): void;
 }
 
-export type Tab = 'build' | 'guests';
+export type Tab = 'build' | 'guests' | 'research';
 
 const WISH_ICONS: Record<Wish, string> = {
   snacks: '<svg viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" fill="#ffe2bd"/><path d="M2 7 L4 3 H12 L14 7 Z" fill="#f2b441"/></svg>',
@@ -39,6 +41,15 @@ function peopleIcon(g: Guest): string {
 export type Speed = 0 | 1 | 2 | 4;
 
 const ICONS: Record<TrayItem, string> = {
+  researchOffice: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#eef3f7"/><rect x="5" y="10" width="22" height="3" fill="#6b7fd6"/><path d="M19 9 a5 5 0 0 1 8 -4" stroke="#999" stroke-width="2" fill="none"/><rect x="9" y="16" width="5" height="4" fill="#3b6e8f"/><rect x="18" y="16" width="5" height="4" fill="#3b6e8f"/></svg>',
+  gardenBungalows: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#8cc860"/><path d="M3 14 L9 9 L15 14 Z" fill="#7a5a3a"/><rect x="4" y="14" width="10" height="8" fill="#a8754a"/><path d="M17 14 L23 9 L29 14 Z" fill="#7a5a3a"/><rect x="18" y="14" width="10" height="8" fill="#a8754a"/></svg>',
+  italianRestaurant: '<svg viewBox="0 0 32 32"><path d="M3 13 L16 5 L29 13 Z" fill="#c0392b"/><rect x="5" y="13" width="22" height="13" fill="#fff4e2"/><rect x="10" y="15" width="12" height="4" fill="#2e9e4f"/></svg>',
+  seafoodRestaurant: '<svg viewBox="0 0 32 32"><path d="M3 13 L16 5 L29 13 Z" fill="#2e86c1"/><rect x="5" y="13" width="22" height="13" fill="#fff4e2"/><path d="M10 21 q6 -6 12 0 q-6 6 -12 0 Z" fill="#ff8a4c"/></svg>',
+  asianRestaurant: '<svg viewBox="0 0 32 32"><path d="M2 13 Q16 3 30 13 Z" fill="#8e2e2e"/><rect x="5" y="13" width="22" height="13" fill="#fff4e2"/><circle cx="16" cy="19" r="3" fill="#f2b441"/></svg>',
+  gym: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#e9eef0"/><rect x="5" y="10" width="22" height="3" fill="#4a5560"/><rect x="10" y="18" width="12" height="2" fill="#ff6b6b"/><rect x="8" y="16" width="3" height="6" fill="#ff6b6b"/><rect x="21" y="16" width="3" height="6" fill="#ff6b6b"/></svg>',
+  spa: '<svg viewBox="0 0 32 32"><path d="M4 13 L16 6 L28 13 Z" fill="#5fb3a5"/><rect x="6" y="13" width="20" height="13" fill="#fff"/><path d="M16 15 q-4 4 0 8 q4 -4 0 -8 Z" fill="#7fd8e8"/></svg>',
+  boutique: '<svg viewBox="0 0 32 32"><rect x="6" y="12" width="20" height="15" fill="#f6effa"/><rect x="4" y="10" width="24" height="4" fill="#7f55b8"/><path d="M12 18 h8 l-1 7 h-6 Z" fill="#ffd166"/></svg>',
+  diveShop: '<svg viewBox="0 0 32 32"><rect x="2" y="22" width="28" height="6" fill="#6fd6d6"/><rect x="5" y="11" width="14" height="11" fill="#3b8fd6"/><rect x="22" y="6" width="1.5" height="14" fill="#9b6b43"/><rect x="23.5" y="6" width="6" height="4" fill="#ff4d4d"/></svg>',
   land: '<svg viewBox="0 0 32 32"><path d="M2 22 Q16 14 30 22 V28 H2 Z" fill="#6fd6d6"/><path d="M7 21 Q16 10 25 21 Z" fill="#9fd36f"/><rect x="15" y="6" width="2" height="10" fill="#7d5534"/><path d="M17 6 L24 9 L17 12 Z" fill="#ff8a4c"/></svg>',
   path: '<svg viewBox="0 0 32 32"><path d="M6 28 C 10 18, 22 20, 26 4" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/></svg>',
   basicRooms:
@@ -83,6 +94,8 @@ export class Hud {
   private patienceBars = new Map<number, HTMLElement>();
   private guestEls = new Map<number, HTMLElement>();
   private handlers: HudHandlers;
+  private researchTray!: HTMLElement;
+  private researchKey = '';
   private toastTimer = 0;
 
   constructor(
@@ -112,6 +125,7 @@ export class Hud {
         <div class="tabs" role="tablist">
           <button data-tab="build" role="tab" class="on">Build</button>
           <button data-tab="guests" role="tab">Guests <span class="badge" data-badge></span></button>
+          <button data-tab="research" role="tab">Research <span class="badge ok" data-rbadge></span></button>
         </div>
         <nav class="tray" data-tray></nav>
         <div class="tray guest-tray" data-guest-tray hidden>
@@ -121,6 +135,10 @@ export class Hud {
           </button>
           <div class="guest-cards" data-guest-cards></div>
           <div class="empty" data-empty>No one is waiting. The ferry docks at 08:00.</div>
+        </div>
+        <div class="tray research-tray" data-research-tray hidden>
+          <div class="points"><b data-points>0</b><span>research points</span><small>1 per review star, +4 a night per Research Office</small></div>
+          <div class="research-cards" data-research-cards></div>
         </div>
         <div class="chip" data-chip></div>
       </footer>`;
@@ -134,6 +152,11 @@ export class Hud {
     this.emptyEl = q('[data-empty]');
     this.badgeEl = q('[data-badge]');
     this.chipEl = q('[data-chip]');
+    this.researchTray = q('[data-research-tray]');
+    this.researchTray.addEventListener('click', (e) => {
+      const c = (e.target as HTMLElement).closest<HTMLElement>('[data-node]');
+      if (c) h.onResearch(c.dataset.node!);
+    });
     q('[data-auto]').addEventListener('click', () => h.onAutoAssign());
     this.coinsEl = q('[data-coins]');
     this.hintEl = q('[data-hint]');
@@ -205,6 +228,7 @@ export class Hud {
     for (const b of this.tabBtns) b.classList.toggle('on', b.dataset.tab === tab);
     this.buildTray.hidden = tab !== 'build';
     this.guestTray.hidden = tab !== 'guests';
+    this.researchTray.hidden = tab !== 'research';
     this.toolbar.classList.toggle('hidden', tab !== 'build');
   }
 
@@ -268,6 +292,48 @@ export class Hud {
   setCoins(n: number): void {
     this.coinsEl.textContent = Math.floor(n).toLocaleString('en-US');
     this.coinsEl.classList.toggle('neg', n < 0);
+  }
+
+  /** Lock or unlock a build card; `reason` says what research it needs. */
+  setLocked(item: TrayItem, reason: string | null): void {
+    const c = this.cards.get(item);
+    if (!c || (c.dataset.lock ?? '') === (reason ?? '')) return;
+    c.classList.toggle('locked', reason !== null);
+    c.dataset.lock = reason ?? '';
+  }
+
+  lockReason(item: TrayItem): string | null {
+    return this.cards.get(item)?.dataset.lock || null;
+  }
+
+  /** Research topics as cards, grouped by branch. Cheap to call often. */
+  setResearch(points: number, nodes: Array<{ node: ResearchNode; status: NodeStatus }>): void {
+    const key = points + '|' + nodes.map((n) => n.node.id + n.status.state + ('reason' in n.status ? n.status.reason : '')).join(',');
+    const available = nodes.filter((n) => n.status.state === 'available').length;
+    const rb = this.root.querySelector<HTMLElement>('[data-rbadge]')!;
+    rb.textContent = available ? String(available) : '';
+    if (key === this.researchKey) return;
+    this.researchKey = key;
+    this.root.querySelector('[data-points]')!.textContent = String(points);
+    const html = nodes
+      .slice()
+      .sort((a, b) => a.node.tier - b.node.tier || a.node.branch.localeCompare(b.node.branch))
+      .map(({ node, status }) => {
+        const foot =
+          status.state === 'done'
+            ? '<span class="state done">✓ Researched</span>'
+            : status.state === 'available'
+              ? `<span class="state go">Research · ${node.cost} pts</span>`
+              : `<span class="state">${status.reason}</span>`;
+        return `<button class="card topic ${status.state}" data-node="${node.id}" title="${node.blurb}">
+          <span class="branch">${BRANCHES[node.branch]} · T${node.tier}</span>
+          <span class="name">${node.name}</span>
+          <span class="sub">${node.blurb}</span>
+          ${foot}
+        </button>`;
+      })
+      .join('');
+    this.root.querySelector('[data-research-cards]')!.innerHTML = html;
   }
 
   setLandPrice(price: number): void {

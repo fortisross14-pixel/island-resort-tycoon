@@ -19,9 +19,11 @@ import {
   type PriceStep,
 } from './needs';
 import { PathGraph, UNREACHABLE } from './pathGraph';
+import { NODES, OFFICE_POINTS, Research, nodeFor, type ResearchState } from './research';
 import { rating, reviewText, starsFor, type Memory, type Review } from './reviews';
 import { Rng } from './rng';
-import type { Building, Tile, World } from './world';
+import type { Building, Result, Tile, World } from './world';
+import type { BuildingKind } from './buildings';
 
 /**
  * The living resort: the day clock, the morning ferry, check-in (M3), and guests
@@ -186,6 +188,8 @@ export interface DayStats {
   supplies: number;
   /** Daily building upkeep. */
   upkeep: number;
+  /** Research points earned today (review stars and offices). */
+  research: number;
 }
 
 export interface NightLine {
@@ -209,6 +213,7 @@ export interface NightReport {
   best: string | null;
   worst: string | null;
   nextArrivals: number;
+  researchPoints: number;
 }
 
 /** Live state of a food venue (M4). */
@@ -223,7 +228,9 @@ export interface Venue {
 }
 
 export interface SimSnapshot {
-  version: 4;
+  version: 5;
+  research: ResearchState;
+  progression: boolean;
   reviews: Review[];
   nextReviewId: number;
   roomRates: Record<number, PriceStep>;
@@ -246,6 +253,7 @@ export type SimEvent =
   | { type: 'purchase'; guestId: number; buildingId: number; amount: number }
   | { type: 'review'; review: Review }
   | { type: 'night'; report: NightReport }
+  | { type: 'researched'; id: string }
   | { type: 'newDay'; day: number; yesterday: DayStats };
 
 const emptyStats = (): DayStats => ({
@@ -257,6 +265,7 @@ const emptyStats = (): DayStats => ({
   roomIncome: 0,
   supplies: 0,
   upkeep: 0,
+  research: 0,
 });
 
 /** Parties on a day's ferry: grows with the days and, above all, with the star rating. */
@@ -286,6 +295,9 @@ export class Sim {
   night: NightReport | null = null;
   /** The game pauses on the night report; headless runs carry straight on. */
   pauseAtNight = false;
+  readonly research = new Research();
+  /** When on, buildings must be researched before they can be built (off in tests and sandbox). */
+  progression = false;
   private nextReviewId = 1;
   /** Front Desk behaviour: place arrivals automatically (scores AUTO_PENALTY lower). */
   autoCheckIn = false;
@@ -298,6 +310,36 @@ export class Sim {
   constructor(readonly world: World) {
     this.paths = new PathGraph(world);
     world.onChange(() => (this.stale = true));
+    world.gate = (kind) => this.buildGate(kind);
+  }
+
+  // ---------- research (Pass 1) ----------
+
+  /** Whether research allows a building yet. */
+  buildGate(kind: BuildingKind): Result {
+    if (!this.progression || this.research.isUnlocked(kind)) return { ok: true };
+    const node = nodeFor(kind);
+    return { ok: false, reason: node ? `Research ${node.name} first` : 'Not available yet' };
+  }
+
+  isUnlocked(kind: BuildingKind): boolean {
+    return this.buildGate(kind).ok;
+  }
+
+  /** Spend research points on a topic. */
+  researchTopic(id: string): Result {
+    const r = this.research.research(id, this.rating);
+    if (r.ok) this.emit({ type: 'researched', id });
+    return r;
+  }
+
+  get researchNodes() {
+    return NODES.map((node) => ({ node, status: this.research.status(node, this.rating) }));
+  }
+
+  private addResearch(points: number): void {
+    this.research.points += points;
+    this.today.research += points;
   }
 
   // ---------- geometry of the dock and pier ----------
@@ -488,6 +530,9 @@ export class Sim {
     if (t.upkeep) costs.push({ buildingId: null, name: 'Upkeep', amount: -t.upkeep, detail: `${this.world.buildings.length} buildings` });
     if (t.supplies) costs.push({ buildingId: null, name: 'Supplies', amount: -t.supplies, detail: '30% of food sales' });
 
+    const offices = this.world.buildings.filter((b) => b.kind === 'researchOffice').length;
+    if (offices) this.addResearch(offices * OFFICE_POINTS);
+
     // Parties whose stay is over check out in the morning; they write their review tonight.
     let checkingOut = 0;
     for (const g of this.guests)
@@ -517,6 +562,7 @@ export class Sim {
       best: this.bestMoment(income),
       worst: this.worstMoment(),
       nextArrivals: arrivalsForDay(this.day + 1, this.rating),
+      researchPoints: t.research,
     };
     this.emit({ type: 'night', report });
     if (this.pauseAtNight) this.night = report;
@@ -594,6 +640,8 @@ export class Sim {
     const { text, buildingId } = reviewText(stars, g.memories);
     const review: Review = { id: this.nextReviewId++, day: this.day, guestType: g.type, stars, text, buildingId };
     this.reviews.push(review);
+    // GDD: "Research Points come from guest reviews (each star = 1 point)".
+    this.addResearch(stars);
     if (this.reviews.length > 500) this.reviews.splice(0, this.reviews.length - 500);
     this.emit({ type: 'review', review });
   }
@@ -1189,7 +1237,9 @@ export class Sim {
 
   snapshot(): SimSnapshot {
     return {
-      version: 4,
+      version: 5,
+      research: this.research.snapshot(),
+      progression: this.progression,
       reviews: structuredClone(this.reviews),
       nextReviewId: this.nextReviewId,
       roomRates: { ...this.roomRates },
@@ -1205,7 +1255,9 @@ export class Sim {
   }
 
   restore(s: SimSnapshot): void {
-    if (s.version !== 4) throw new Error('Incompatible save');
+    if (s.version !== 5) throw new Error('Incompatible save');
+    this.research.restore(s.research);
+    this.progression = s.progression;
     this.reviews = structuredClone(s.reviews);
     this.nextReviewId = s.nextReviewId;
     this.roomRates = { ...s.roomRates };
@@ -1223,7 +1275,9 @@ export class Sim {
 
   reset(): void {
     this.restore({
-      version: 4,
+      version: 5,
+      research: { points: 0, done: [] },
+      progression: this.progression,
       reviews: [],
       nextReviewId: 1,
       roomRates: { 1: DEFAULT_PRICE },

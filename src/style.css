@@ -445,3 +445,40 @@ button:disabled { cursor: default; opacity: 0.45; }
   .report .cols { grid-template-columns: 1fr; }
   .reviews li { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ---------- research (Pass 1) ---------- */
+.badge.ok { background: var(--good); }
+.card.locked { opacity: 0.45; filter: grayscale(0.6); position: relative; }
+.card.locked::after {
+  content: '🔒';
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 11px;
+}
+.research-tray { align-items: stretch; }
+.research-tray .points {
+  flex: none;
+  width: 110px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: 2px;
+  padding: 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.research-tray .points b { font-size: 28px; color: var(--ink); line-height: 1; }
+.research-tray .points small { font-size: 9px; font-weight: 600; }
+.research-cards { display: flex; gap: 8px; }
+.card.topic { width: 128px; justify-items: start; text-align: left; gap: 3px; padding: 8px 9px; }
+.card.topic .branch { font-size: 10px; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.card.topic .sub { white-space: normal; line-height: 1.2; }
+.card.topic .state { font-size: 11px; font-weight: 800; color: var(--ink-soft); margin-top: auto; }
+.card.topic .state.go { color: #fff; background: var(--accent); border-radius: 999px; padding: 2px 8px; }
+.card.topic .state.done { color: var(--good); }
+.card.topic.done { background: #f1faf4; }
+.card.topic.locked { opacity: 0.6; }
+.card.topic.locked::after { content: none; }
